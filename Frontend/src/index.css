@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Satisfy&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Pacifico&family=Dancing+Script&display=swap');
+.forgot-password-container {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(to right, #74ebd5, #ACB6E5);
+  }
+  
+  .forgot-password-card {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    width: 350px;
+    text-align: center;
+  }
+  
+  .forgot-password-card h2 {
+    margin-bottom: 1rem;
+    color: #333;
+  }
+  
+  .forgot-password-card input {
+    width: 100%;
+    padding: 10px;
+    margin: 1rem 0;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+  }
+  
+  .forgot-password-card button {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin-top: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.3s;
+  }
+  
+  .forgot-password-card button:hover {
+    background: #0056b3;
+  }
+  
+  .message {
+    margin-top: 15px;
+    color: green;
+    font-weight: bold;
+  }
+  
+  .back-button {
+    margin-top: 10px;
+    background-color: #6c757d;
+  }
+  
+  .back-button:hover {
+    background-color: #5a6268;
+  }
