@@ -307,9 +307,8 @@ This project is open source and available under the [MIT License](LICENSE).
 ## Author
 
 **Your Name**
-- GitHub: [@your-username](https://github.com/your-username)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/your-profile)
-- Email: your.email@example.com
+- GitHub: [https://github.com/tanish4542](https://github.com/your-username)
+- Email: tanisharora4542@gmail.com
 
 ---
 
