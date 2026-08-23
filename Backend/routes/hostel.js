@@ -35,7 +35,7 @@ router.get('/', (req, res) => {
 
   const baseQuery = `
     SELECT hc.id, hc.text, hc.block AS hostelBlock, hc.roomNumber, hc.isAnonymous,
-           hc.submittedAt, hc.status, hc.response, u.email
+           hc.submittedAt, hc.status, hc.response, hc.version, u.email
     FROM hostel_complaints hc
     LEFT JOIN users u ON hc.user_id = u.id
   `;
@@ -56,17 +56,27 @@ router.get('/', (req, res) => {
 // PUT: Update complaint status
 router.put('/:id/status', (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   db.query(
-    'UPDATE hostel_complaints SET status = ? WHERE id = ?',
-    [status, id],
-    (err) => {
+    'UPDATE hostel_complaints SET status = ?, version = version + 1 WHERE id = ? AND version = ?',
+    [status, id, Number(version)],
+    (err, result) => {
       if (err) {
         console.error("Status update error:", err);
         return res.status(500).json({ error: 'Failed to update status' });
       }
-      res.json({ message: 'Status updated' });
+
+      if (result.affectedRows === 0) {
+        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
+      }
+
+      global.io?.emit('complaintUpdated', { id: Number(id), status, department: 'hostel' });
+      res.json({ message: 'Status updated', version: Number(version) + 1 });
     }
   );
 });
@@ -74,15 +84,19 @@ router.put('/:id/status', (req, res) => {
 // POST: Save response and notify student (if not anonymous)
 router.post('/:id/response', (req, res) => {
   const { id } = req.params;
-  const { response } = req.body;
+  const { response, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   const updateQuery = `
     UPDATE hostel_complaints
-    SET response = ?, status = 'resolved'
-    WHERE id = ?
+    SET response = ?, status = 'resolved', version = version + 1
+    WHERE id = ? AND version = ?
   `;
 
-  db.query(updateQuery, [response, id], (err) => {
+  db.query(updateQuery, [response, id, Number(version)], (err, result) => {
     if (err) {
       console.error('Error saving response:', err);
       return res.status(500).json({ error: 'Database error' });
@@ -138,7 +152,7 @@ module.exports = router;
 // GET: Fetch all hostel complaints for student portal
 router.get('/all', (req, res) => {
   const sql = `
-    SELECT id, block AS hostelBlock, roomNumber, text, isAnonymous, submittedAt AS date, status, response
+    SELECT id, block AS hostelBlock, roomNumber, text, isAnonymous, submittedAt AS date, status, response, version
     FROM hostel_complaints
     ORDER BY submittedAt DESC
   `;

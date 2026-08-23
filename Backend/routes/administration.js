@@ -77,17 +77,27 @@ router.get('/', (req, res) => {
 // =============================
 router.put('/:id/status', (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   db.query(
-    'UPDATE administration_complaints SET status = ? WHERE id = ?',
-    [status, id],
-    (err) => {
+    'UPDATE administration_complaints SET status = ?, version = version + 1 WHERE id = ? AND version = ?',
+    [status, id, Number(version)],
+    (err, result) => {
       if (err) {
         console.error('Error updating status:', err);
         return res.status(500).json({ error: 'Database error' });
       }
-      res.json({ message: 'Status updated successfully' });
+
+      if (result.affectedRows === 0) {
+        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
+      }
+
+      global.io?.emit('complaintUpdated', { id: Number(id), status, department: 'administration' });
+      res.json({ message: 'Status updated successfully', version: Number(version) + 1 });
     }
   );
 });
@@ -97,15 +107,19 @@ router.put('/:id/status', (req, res) => {
 // =============================
 router.post('/:id/response', (req, res) => {
   const { id } = req.params;
-  const { response, resolvedBy } = req.body;
+  const { response, resolvedBy, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   const updateQuery = `
     UPDATE administration_complaints
-    SET response = ?, resolved_by = ?, status = 'Resolved', updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
+    SET response = ?, resolved_by = ?, status = 'Resolved', updated_at = CURRENT_TIMESTAMP, version = version + 1
+    WHERE id = ? AND version = ?
   `;
 
-  db.query(updateQuery, [response, resolvedBy, id], (err) => {
+  db.query(updateQuery, [response, resolvedBy, id, Number(version)], (err, result) => {
     if (err) {
       console.error('Error saving response:', err);
       return res.status(500).json({ error: 'Database error' });

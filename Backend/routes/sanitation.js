@@ -49,17 +49,27 @@ router.get('/', (req, res) => {
 // PUT: Update complaint status
 router.put('/:id/status', (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   db.query(
-    `UPDATE sanitation_complaints SET status = ? WHERE id = ?`,
-    [status, id],
-    (err) => {
+    `UPDATE sanitation_complaints SET status = ?, version = version + 1 WHERE id = ? AND version = ?`,
+    [status, id, Number(version)],
+    (err, result) => {
       if (err) {
         console.error('Status update error:', err);
         return res.status(500).json({ error: 'Failed to update status' });
       }
-      res.json({ message: 'Status updated' });
+
+      if (result.affectedRows === 0) {
+        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
+      }
+
+      global.io?.emit('complaintUpdated', { id: Number(id), status, department: 'sanitation' });
+      res.json({ message: 'Status updated', version: Number(version) + 1 });
     }
   );
 });
@@ -67,21 +77,31 @@ router.put('/:id/status', (req, res) => {
 // POST: Save response (in `resolvedBy`)
 router.post('/:id/response', (req, res) => {
   const { id } = req.params;
-  const { response } = req.body;
+  const { response, version } = req.body;
 
   if (!response) {
     return res.status(400).json({ error: 'Response required' });
   }
 
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
+
   db.query(
-    `UPDATE sanitation_complaints SET resolvedBy = ?, status = 'resolved' WHERE id = ?`,
-    [response, id],
-    (err) => {
+    `UPDATE sanitation_complaints SET resolvedBy = ?, status = 'resolved', version = version + 1 WHERE id = ? AND version = ?`,
+    [response, id, Number(version)],
+    (err, result) => {
       if (err) {
         console.error('Response save error:', err);
         return res.status(500).json({ error: 'Failed to save response' });
       }
-      res.json({ message: 'Response saved and complaint marked as resolved' });
+
+      if (result.affectedRows === 0) {
+        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
+      }
+
+      global.io?.emit('complaintUpdated', { id: Number(id), status: 'resolved', department: 'sanitation' });
+      res.json({ message: 'Response saved and complaint marked as resolved', version: Number(version) + 1 });
     }
   );
 });

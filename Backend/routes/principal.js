@@ -77,7 +77,7 @@ router.get('/principal/urgent', async (req, res) => {
         const query = `
           SELECT id, ${textColumn} AS text, ${submittedColumn} AS submitted_at, ${responseCol} AS response, status, ? AS department
           FROM ${table}
-          WHERE status = 'pending' AND DATEDIFF(NOW(), ${submittedColumn}) > 7
+          WHERE status = 'escalated' AND DATEDIFF(NOW(), ${submittedColumn}) > 7
         `;
         return dbQuery(query, [department]);
       })
@@ -136,7 +136,7 @@ router.get('/principal/home', async (req, res) => {
           SELECT
             SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
             SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved,
-            SUM(CASE WHEN status = 'pending' AND DATEDIFF(NOW(), ${submittedColumn}) > 7 THEN 1 ELSE 0 END) AS urgent
+            SUM(CASE WHEN status = 'escalated' AND DATEDIFF(NOW(), ${submittedColumn}) > 7 THEN 1 ELSE 0 END) AS urgent
           FROM ${table}
         `;
         return dbQuery(query, []); // pass empty params

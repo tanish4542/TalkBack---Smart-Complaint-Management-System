@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaSearch, FaReply, FaCheckCircle } from 'react-icons/fa';
+import { io } from 'socket.io-client';
 
 const AdministrationDashboard = () => {
   const [complaints, setComplaints] = useState([]);
@@ -9,7 +10,21 @@ const AdministrationDashboard = () => {
   useEffect(() => {
     const fetchComplaints = async () => {
       try {
-        const response = await fetch(`http://localhost:3005/api/administration?status=${filter}`);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:3005/api/administration?status=${filter}`, {
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          alert('Session expired. Please log in again.');
+          localStorage.clear();
+          window.location.href = '/';
+          return;
+        }
+
         const data = await response.json();
         setComplaints(data);
       } catch (error) {
@@ -20,13 +35,39 @@ const AdministrationDashboard = () => {
     fetchComplaints();
   }, [filter]);
 
+  useEffect(() => {
+    const socket = io('http://localhost:3005');
+    socket.on('complaintUpdated', (payload) => {
+      if (payload.department === 'administration') {
+        setComplaints(prev => prev.map(c => c.id === payload.id ? { ...c, status: payload.status } : c));
+      }
+    });
+
+    return () => socket.disconnect();
+  }, []);
+
   const handleStatusUpdate = async (complaintId, newStatus) => {
+    const complaint = complaints.find(c => c.id === complaintId);
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`http://localhost:3005/api/administration/${complaintId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ status: newStatus, version: complaint?.version ?? 0 })
       });
+
+      if (response.status === 409) {
+        alert('This complaint was updated by someone else. Please refresh and try again.');
+        const refreshed = await fetch(`http://localhost:3005/api/administration?status=${filter}`, {
+          headers: { 'Authorization': token ? `Bearer ${token}` : '', 'Content-Type': 'application/json' }
+        });
+        const data = await refreshed.json();
+        setComplaints(data);
+        return;
+      }
 
       if (response.ok) {
         setComplaints(prev =>
@@ -190,14 +231,20 @@ const AdministrationDashboard = () => {
                   className="btn btn-primary"
                   onClick={async () => {
                     const responseText = document.getElementById(`response-input-${complaint.id}`).value;
+                    const complaintSnapshot = complaints.find(c => c.id === complaint.id);
                     if (!responseText.trim()) return alert("Response cannot be empty.");
                     try {
+                      const token = localStorage.getItem('token');
                       const res = await fetch(`http://localhost:3005/api/administration/${complaint.id}/response`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Authorization": token ? `Bearer ${token}` : ''
+                        },
                         body: JSON.stringify({
                           response: responseText,
-                          resolvedBy: "Admin"
+                          resolvedBy: "Admin",
+                          version: complaintSnapshot?.version ?? 0
                         })
                       });
                       if (res.ok) {

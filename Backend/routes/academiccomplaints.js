@@ -48,31 +48,45 @@ router.get('/', (req, res) => {
 // PUT - Admin: Update Complaint Status
 router.put('/:id/status', (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   db.query(
-    'UPDATE academic_complaints SET status = ? WHERE id = ?',
-    [status, id],
-    (err) => {
+    'UPDATE academic_complaints SET status = ?, version = version + 1 WHERE id = ? AND version = ?',
+    [status, id, Number(version)],
+    (err, result) => {
       if (err) {
         console.error('Error updating status:', err);
         return res.status(500).json({ error: 'Database error' });
       }
-      res.json({ message: 'Status updated successfully' });
+
+      if (result.affectedRows === 0) {
+        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
+      }
+
+      global.io?.emit('complaintUpdated', { id: Number(id), status, department: 'academic' });
+      res.json({ message: 'Status updated successfully', version: Number(version) + 1 });
     }
   );
 });
 router.post('/:id/response', (req, res) => {
   const { id } = req.params;
-  const { response } = req.body;
+  const { response, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   const updateQuery = `
     UPDATE academic_complaints
-    SET response = ?, status = 'resolved', resolved_by = 'Principal', submitted_at = CURRENT_TIMESTAMP
-    WHERE id = ?
+    SET response = ?, status = 'resolved', resolved_by = 'Principal', submitted_at = CURRENT_TIMESTAMP, version = version + 1
+    WHERE id = ? AND version = ?
   `;
 
-  db.query(updateQuery, [response, id], (err) => {
+  db.query(updateQuery, [response, id, Number(version)], (err, result) => {
     if (err) {
       console.error('Error saving response:', err);
       return res.status(500).json({ error: 'Database error' });
@@ -119,7 +133,7 @@ router.post('/:id/response', (req, res) => {
 // Student - View academic complaint history
 router.get('/history', (req, res) => {
   const query = `
-    SELECT ac.id, ac.course, ac.complaint_type, ac.description, ac.response, ac.status, ac.submitted_at, ac.resolved_by,
+    SELECT ac.id, ac.course, ac.complaint_type, ac.description, ac.response, ac.status, ac.submitted_at, ac.resolved_by, ac.version,
            u.email
     FROM academic_complaints ac
     LEFT JOIN users u ON ac.user_id = u.id

@@ -10,7 +10,13 @@ const TransportationDashboard = () => {
   useEffect(() => {
     const fetchComplaints = async () => {
       try {
-        const response = await fetch(`http://localhost:3005/api/transportation?status=${filter}`);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:3005/api/transportation?status=${filter}`, {
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+            'Content-Type': 'application/json'
+          }
+        });
         const data = await response.json();
         setComplaints(data);
       } catch (error) {
@@ -22,15 +28,20 @@ const TransportationDashboard = () => {
 
   const handleStatusUpdate = async (complaintId, newStatus) => {
     const hasResponse = responses[complaintId] || complaints.find(c => c.id === complaintId)?.response;
+    const complaint = complaints.find(c => c.id === complaintId);
     if (newStatus === 'resolved' && !hasResponse) {
       alert("Please respond before resolving the complaint.");
       return;
     }
     try {
+      const token = localStorage.getItem('token');
       await fetch(`http://localhost:3005/api/transportation/${complaintId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ status: newStatus, version: complaint?.version ?? 0 })
       });
       setComplaints(prev => prev.map(c => c.id === complaintId ? { ...c, status: newStatus } : c));
     } catch (error) {
@@ -45,10 +56,15 @@ const TransportationDashboard = () => {
       return;
     }
     try {
+      const token = localStorage.getItem('token');
+      const complaint = complaints.find(c => c.id === complaintId);
       const res = await fetch(`http://localhost:3005/api/transportation/${complaintId}/response`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ response: responseText, resolvedBy: 'Transport Admin' })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ response: responseText, resolvedBy: 'Transport Admin', version: complaint?.version ?? 0 })
       });
       if (res.ok) {
         alert("Response submitted successfully");

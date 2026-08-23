@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaSearch, FaReply, FaCheckCircle, FaBed, FaBuilding } from 'react-icons/fa';
+import { io } from 'socket.io-client';
 
 const HostelDashboard = () => {
   const [complaints, setComplaints] = useState([]);
@@ -10,7 +11,14 @@ const HostelDashboard = () => {
   useEffect(() => {
     const fetchComplaints = async () => {
       try {
-        const response = await fetch(`http://localhost:3005/api/hostel?status=${filter}`);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:3005/api/hostel?status=${filter}`, {
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+            'Content-Type': 'application/json'
+          }
+        });
+
         const data = await response.json();
 
         if (Array.isArray(data)) {
@@ -28,19 +36,45 @@ const HostelDashboard = () => {
     fetchComplaints();
   }, [filter]);
 
+  useEffect(() => {
+    const socket = io('http://localhost:3005');
+    socket.on('complaintUpdated', (payload) => {
+      if (payload.department === 'hostel') {
+        setComplaints(prev => prev.map(c => c.id === payload.id ? { ...c, status: payload.status } : c));
+      }
+    });
+
+    return () => socket.disconnect();
+  }, []);
+
   const handleStatusUpdate = async (complaintId, newStatus) => {
     const hasResponse = responses[complaintId] || complaints.find(c => c.id === complaintId)?.response;
+    const complaint = complaints.find(c => c.id === complaintId);
     if (newStatus === 'resolved' && !hasResponse) {
       alert("Please respond before resolving the complaint.");
       return;
     }
 
     try {
-      await fetch(`http://localhost:3005/api/hostel/${complaintId}/status`, {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:3005/api/hostel/${complaintId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ status: newStatus, version: complaint?.version ?? 0 })
       });
+
+      if (res.status === 409) {
+        alert('This complaint was updated by someone else. Please refresh and try again.');
+        const refreshed = await fetch(`http://localhost:3005/api/hostel?status=${filter}`, {
+          headers: { 'Authorization': token ? `Bearer ${token}` : '', 'Content-Type': 'application/json' }
+        });
+        const data = await refreshed.json();
+        if (Array.isArray(data)) setComplaints(data);
+        return;
+      }
 
       setComplaints(prev =>
         prev.map(c => c.id === complaintId ? { ...c, status: newStatus } : c)
@@ -52,16 +86,21 @@ const HostelDashboard = () => {
 
   const handleResponseSubmit = async (complaintId) => {
     const responseText = responses[complaintId];
+    const complaint = complaints.find(c => c.id === complaintId);
     if (!responseText || !responseText.trim()) {
       alert("Response cannot be empty.");
       return;
     }
 
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(`http://localhost:3005/api/hostel/${complaintId}/response`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ response: responseText })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ response: responseText, version: complaint?.version ?? 0 })
       });
 
       if (res.ok) {

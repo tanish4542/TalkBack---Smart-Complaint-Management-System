@@ -10,7 +10,13 @@ const SanitationDashboard = () => {
   useEffect(() => {
     const fetchComplaints = async () => {
       try {
-        const response = await fetch(`http://localhost:3005/api/sanitation?status=${filter}`);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:3005/api/sanitation?status=${filter}`, {
+          headers: {
+            'Authorization': token ? `Bearer ${token}` : '',
+            'Content-Type': 'application/json'
+          }
+        });
         const data = await response.json();
         if (Array.isArray(data)) {
           setComplaints(data);
@@ -28,16 +34,21 @@ const SanitationDashboard = () => {
 
   const handleStatusUpdate = async (complaintId, newStatus) => {
     const hasResponse = responses[complaintId] || complaints.find(c => c.id === complaintId)?.resolvedBy;
+    const complaint = complaints.find(c => c.id === complaintId);
     if (newStatus === 'resolved' && !hasResponse) {
       alert("Please respond before resolving the complaint.");
       return;
     }
 
     try {
+      const token = localStorage.getItem('token');
       await fetch(`http://localhost:3005/api/sanitation/${complaintId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ status: newStatus, version: complaint?.version ?? 0 })
       });
 
       setComplaints(prev =>
@@ -56,10 +67,15 @@ const SanitationDashboard = () => {
     }
 
     try {
+      const token = localStorage.getItem('token');
+      const complaint = complaints.find(c => c.id === complaintId);
       const res = await fetch(`http://localhost:3005/api/sanitation/${complaintId}/response`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ response: responseText })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ response: responseText, version: complaint?.version ?? 0 })
       });
 
       if (res.ok) {

@@ -26,7 +26,7 @@ router.post('/login', (req, res) => {
     if (!passwordMatch) return res.status(401).json({ error: 'Wrong password' });
 
     // ✅ 3. Generate token
-    const token = jwt.sign({ id: user.id, role: user.role }, 'secret123');
+    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET);
     res.json({
       token,
       user: { id: user.id, name: user.name, role: user.role }

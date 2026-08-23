@@ -44,17 +44,27 @@ router.get('/', (req, res) => {
 // Admin - Update status
 router.put('/:id/status', (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   db.query(
-    'UPDATE transport_complaints SET status = ? WHERE id = ?',
-    [status, id],
-    (err) => {
+    'UPDATE transport_complaints SET status = ?, version = version + 1 WHERE id = ? AND version = ?',
+    [status, id, Number(version)],
+    (err, result) => {
       if (err) {
         console.error('Error updating status:', err);
         return res.status(500).json({ error: 'Database error' });
       }
-      res.json({ message: 'Status updated' });
+
+      if (result.affectedRows === 0) {
+        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
+      }
+
+      global.io?.emit('complaintUpdated', { id: Number(id), status, department: 'transportation' });
+      res.json({ message: 'Status updated', version: Number(version) + 1 });
     }
   );
 });
@@ -62,15 +72,19 @@ router.put('/:id/status', (req, res) => {
 // Admin - Respond and notify
 router.post('/:id/response', (req, res) => {
   const { id } = req.params;
-  const { response } = req.body;
+  const { response, version } = req.body;
+
+  if (version === undefined || version === null) {
+    return res.status(400).json({ error: 'Version is required' });
+  }
 
   const updateQuery = `
     UPDATE transport_complaints
-    SET response = ?, status = 'resolved'
-    WHERE id = ?
+    SET response = ?, status = 'resolved', version = version + 1
+    WHERE id = ? AND version = ?
   `;
 
-  db.query(updateQuery, [response, id], (err) => {
+  db.query(updateQuery, [response, id, Number(version)], (err, result) => {
     if (err) {
       console.error('Error saving response:', err);
       return res.status(500).json({ error: 'Database error' });
@@ -117,7 +131,7 @@ router.post('/:id/response', (req, res) => {
 // Student - Fetch all complaints (public view)
 router.get('/history', (req, res) => {
   const query = `
-    SELECT id, vehicleNumber, type, text, response, status, created_at
+    SELECT id, vehicleNumber, type, text, response, status, created_at, version
     FROM transport_complaints
     ORDER BY created_at DESC
   `;
