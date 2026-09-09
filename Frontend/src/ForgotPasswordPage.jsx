@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import API from './api';
 
 function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -11,7 +11,7 @@ function ForgotPasswordPage() {
     e.preventDefault();
 
     try {
-      const res = await axios.post('http://localhost:3005/api/auth/forgot-password', { email });
+      const res = await API.post('/api/auth/forgot-password', { email });
       setMessage(`📩 ${res.data.message}`);
     } catch (err) {
       console.error(err);

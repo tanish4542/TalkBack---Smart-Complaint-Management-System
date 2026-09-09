@@ -74,19 +74,21 @@ router.put('/:id/status', (req, res) => {
 });
 router.post('/:id/response', (req, res) => {
   const { id } = req.params;
-  const { response, version } = req.body;
+  const { response, resolvedBy, version } = req.body;
 
   if (version === undefined || version === null) {
     return res.status(400).json({ error: 'Version is required' });
   }
 
+  const resolver = resolvedBy || 'Admin';
+
   const updateQuery = `
     UPDATE academic_complaints
-    SET response = ?, status = 'resolved', resolved_by = 'Principal', submitted_at = CURRENT_TIMESTAMP, version = version + 1
+    SET response = ?, status = 'resolved', resolved_by = ?, submitted_at = CURRENT_TIMESTAMP, version = version + 1
     WHERE id = ? AND version = ?
   `;
 
-  db.query(updateQuery, [response, id, Number(version)], (err, result) => {
+  db.query(updateQuery, [response, resolver, id, Number(version)], (err, result) => {
     if (err) {
       console.error('Error saving response:', err);
       return res.status(500).json({ error: 'Database error' });

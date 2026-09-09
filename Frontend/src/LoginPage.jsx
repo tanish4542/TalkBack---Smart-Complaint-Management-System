@@ -73,7 +73,7 @@ function LoginPage() {
 
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-r from-blue-100 via-purple-300 to-blue-200 relative">
       {/* Top logos */}
-      <img src="/logo.svg" alt="College Logo" className="absolute top-3 right-3 w-[110px] h-[110px]" />
+      <img src="/logo.png" alt="College Logo" className="absolute top-3 right-3 w-[110px] h-[110px]" />
 
       <img src="/images.png" alt="Mascot" className="absolute top-4 left-4 w-[110px]" style={floatAnimation} />
 

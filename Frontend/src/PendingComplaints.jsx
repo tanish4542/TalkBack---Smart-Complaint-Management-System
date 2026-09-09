@@ -1,20 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { FaReply, FaRegClock, FaClock } from 'react-icons/fa';
+import API from './api';
 
 const PendingComplaints = () => {
   const [complaints, setComplaints] = useState([]);
   const [responses, setResponses] = useState({});
 
+  const fetchPendingComplaints = async () => {
+    try {
+      const res = await API.get('/api/principal/pending?status=pending');
+      setComplaints(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Error fetching complaints:", err);
+      setComplaints([]);
+    }
+  };
+
   useEffect(() => {
-    const fetchPendingComplaints = async () => {
-      try {
-        const res = await fetch("http://localhost:3005/api/principal/pending?status=pending");
-        const data = await res.json();
-        setComplaints(data);
-      } catch (err) {
-        console.error("Error fetching complaints:", err);
-      }
-    };
     fetchPendingComplaints();
   }, []);
 
@@ -26,23 +28,15 @@ const PendingComplaints = () => {
     }
 
     try {
-      const res = await fetch(`http://localhost:3005/api/${complaintId}/principal-response`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          response: responseText,
-          resolvedBy: "Principal",
-          department: department
-        })
+      const res = await API.post(`/api/${complaintId}/principal-response`, {
+        response: responseText,
+        resolvedBy: "Principal",
+        department: department
       });
 
-      if (res.ok) {
+      if (res.status === 200) {
         document.getElementById(`response-${complaintId}`).close();
-        setComplaints(prev =>
-          prev.map(c =>
-            c.id === complaintId ? { ...c, response: responseText } : c
-          )
-        );
+        await fetchPendingComplaints();
         alert("Principal response submitted successfully");
       }
     } catch (err) {

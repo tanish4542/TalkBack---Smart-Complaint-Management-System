@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaArrowLeft, FaLock, FaHistory, FaUserShield, FaRegClock } from 'react-icons/fa';
+import API from './api';
 
 const AdministrationComplaint = () => {
   const navigate = useNavigate();
@@ -10,17 +11,16 @@ const AdministrationComplaint = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch administration complaint history
-  useEffect(() => {
-    const fetchComplaintHistory = async () => {
-      try {
-        const response = await fetch("http://localhost:3005/api/administration?status=all");
-        const data = await response.json();
-        setComplaintHistory(data);
-      } catch (error) {
-        console.error("Error fetching history:", error);
-      }
-    };
+  const fetchComplaintHistory = async () => {
+    try {
+      const response = await API.get('/api/administration?status=all');
+      setComplaintHistory(response.data);
+    } catch (error) {
+      console.error("Error fetching history:", error);
+    }
+  };
 
+  useEffect(() => {
     fetchComplaintHistory();
   }, []);
 
@@ -28,37 +28,43 @@ const AdministrationComplaint = () => {
   const handleSubmit = async () => {
     if (!complaintText.trim()) return;
 
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert("You must be logged in to submit a complaint. Redirecting to login...");
+      navigate('/');
+      return;
+    }
+
     setIsSubmitting(true);
 
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
     const userId = isAnonymous ? null : user?.id;
 
     try {
-      const response = await fetch('http://localhost:3005/api/administration/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          description: complaintText,
-          isAnonymous: isAnonymous,
-          userId: userId
-        })
+      const response = await API.post('/api/administration/submit', {
+        description: complaintText,
+        isAnonymous: isAnonymous,
+        userId: userId
       });
 
-      if (response.ok) {
+      if (response.status === 200) {
         alert(`Complaint submitted ${isAnonymous ? 'anonymously' : ''}`);
         setComplaintText('');
         setIsAnonymous(false);
 
         // Reload complaint history
-        const updated = await fetch('http://localhost:3005/api/administration?status=all');
-        const data = await updated.json();
-        setComplaintHistory(data);
+        await fetchComplaintHistory();
       } else {
         alert('Failed to submit complaint');
       }
     } catch (error) {
       console.error("Submission error:", error);
-      alert("Submission failed.");
+      if (error.response?.status === 401) {
+        alert("Session expired. Please log in again.");
+        navigate('/');
+      } else {
+        alert("Submission failed.");
+      }
     } finally {
       setIsSubmitting(false);
     }

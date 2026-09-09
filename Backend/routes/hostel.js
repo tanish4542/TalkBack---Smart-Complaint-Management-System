@@ -18,13 +18,13 @@ router.post('/submit', (req, res) => {
 
   db.query(
     query,
-    [text, isAnonymous, hostelBlock, isAnonymous ? null : roomNumber, isAnonymous ? null : userId],
+    [text, Boolean(isAnonymous), hostelBlock, isAnonymous ? '' : (roomNumber || ''), isAnonymous ? null : userId],
     (err) => {
       if (err) {
         console.error("DB error:", err);
         return res.status(500).json({ error: 'Failed to submit complaint' });
       }
-      res.status(201).json({ message: 'Hostel complaint submitted' });
+      res.status(200).json({ message: 'Hostel complaint submitted' });
     }
   );
 });

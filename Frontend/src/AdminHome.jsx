@@ -56,7 +56,7 @@ const AdminHomePage = () => {
   className="absolute top-4 right-2 text-blue-800 "
 >
   <img
-      src="/logo.svg"
+      src="/logo.png"
       alt="Complaint Box"
       className="complaint-logo h-[90px]"
     />

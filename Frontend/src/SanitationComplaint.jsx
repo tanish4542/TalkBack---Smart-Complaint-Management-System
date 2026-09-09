@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import API from './api';
 import { FaArrowLeft, FaLock, FaHistory, FaTrashAlt, FaRegClock, FaBroom } from 'react-icons/fa';
 
 const SanitationComplaint = () => {
@@ -14,12 +15,8 @@ const SanitationComplaint = () => {
   // ✅ Fetch sanitation complaint history
   const fetchComplaintHistory = async () => {
     try {
-      const response = await fetch('http://localhost:3005/api/sanitation');
-      if (!response.ok) {
-        throw new Error('Failed to fetch complaints');
-      }
-      const data = await response.json();
-      setComplaintHistory(data);
+      const response = await API.get('/api/sanitation');
+      setComplaintHistory(response.data);
     } catch (error) {
       console.error("Error fetching sanitation complaints:", error);
     }
@@ -31,35 +28,48 @@ const SanitationComplaint = () => {
 
   const handleSubmit = async () => {
     if (!complaintText.trim()) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert("You must be logged in to submit a complaint. Redirecting to login...");
+      navigate('/');
+      return;
+    }
+
     setIsSubmitting(true);
 
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const userId = isAnonymous ? null : user?.id;
+
     try {
-      const response = await fetch('http://localhost:3005/api/sanitation/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: complaintText,
-          isAnonymous,
-          location,
-          issueType,
-          urgency: document.getElementById('urgency').value
-        })
+      const response = await API.post('/api/sanitation/submit', {
+        text: complaintText,
+        isAnonymous,
+        location,
+        issueType,
+        urgency: document.getElementById('urgency')?.value || 'medium',
+        userId
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to submit complaint');
+      if (response.status === 200 || response.status === 201) {
+        alert(`Sanitation complaint submitted ${isAnonymous ? 'anonymously' : ''}`);
+        setComplaintText('');
+        setLocation('');
+        setIssueType('');
+
+        // ✅ Refresh history after submit
+        await fetchComplaintHistory();
+      } else {
+        alert('Failed to submit complaint');
       }
-
-      alert(`Sanitation complaint submitted ${isAnonymous ? 'anonymously' : ''}`);
-      setComplaintText('');
-      setLocation('');
-      setIssueType('');
-
-      // ✅ Refresh history after submit
-      await fetchComplaintHistory();
-
     } catch (error) {
       console.error("Submission error:", error);
+      if (error.response?.status === 401) {
+        alert("Session expired. Please log in again.");
+        navigate('/');
+      } else {
+        alert("Failed to submit complaint.");
+      }
     } finally {
       setIsSubmitting(false);
     }

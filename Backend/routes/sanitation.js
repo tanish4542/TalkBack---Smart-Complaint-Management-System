@@ -3,24 +3,29 @@ const router = express.Router();
 const db = require('../models/db');
 
 // POST: Submit sanitation complaint
-router.post('/submit', async (req, res) => {
-  const { text, isAnonymous, location, issueType, urgency } = req.body;
+router.post('/submit', (req, res) => {
+  const { text, isAnonymous, location, issueType, urgency, userId } = req.body;
 
   if (!text || !location || !issueType || !urgency) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  try {
-    await db.execute(
-      `INSERT INTO sanitation_complaints (text, isAnonymous, location, issueType, urgency, status)
-       VALUES (?, ?, ?, ?, ?, 'pending')`,
-      [text, isAnonymous, location, issueType, urgency]
-    );
-    res.status(201).json({ message: 'Sanitation complaint submitted successfully' });
-  } catch (err) {
-    console.error('DB Insert error:', err);
-    res.status(500).json({ error: 'Failed to submit complaint' });
-  }
+  const query = `
+    INSERT INTO sanitation_complaints (text, isAnonymous, location, issueType, urgency, status)
+    VALUES (?, ?, ?, ?, ?, 'pending')
+  `;
+
+  db.query(
+    query,
+    [text, isAnonymous, location, issueType, urgency],
+    (err, result) => {
+      if (err) {
+        console.error('DB Insert error:', err);
+        return res.status(500).json({ error: 'Failed to submit complaint' });
+      }
+      res.status(200).json({ message: 'Sanitation complaint submitted successfully' });
+    }
+  );
 });
 
 // GET: Fetch all or filtered by status

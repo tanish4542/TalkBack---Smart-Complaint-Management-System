@@ -1,21 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { FaReply, FaUserGraduate, FaExclamationTriangle } from 'react-icons/fa';
+import API from './api';
 
 const UrgentComplaints = () => {
   const [complaints, setComplaints] = useState([]);
   const [responses, setResponses] = useState({});
 
-  useEffect(() => {
-    const fetchUrgentComplaints = async () => {
-      try {
-        const response = await fetch('http://localhost:3005/api/principal/urgent');
-        const data = await response.json();
-        setComplaints(data);
-      } catch (error) {
-        console.error('Error fetching urgent complaints:', error);
-      }
-    };
+  const fetchUrgentComplaints = async () => {
+    try {
+      const response = await API.get('/api/principal/urgent');
+      setComplaints(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Error fetching urgent complaints:', error);
+      setComplaints([]);
+    }
+  };
 
+  useEffect(() => {
     fetchUrgentComplaints();
   }, []);
 
@@ -29,24 +30,16 @@ const UrgentComplaints = () => {
     }
 
     try {
-      const res = await fetch(`http://localhost:3005/api/${complaintId}/principal-response`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          response: responseText,
-          resolvedBy: "Principal",
-          department: complaint.department
-        })
+      const res = await API.post(`/api/${complaintId}/principal-response`, {
+        response: responseText,
+        resolvedBy: "Principal",
+        department: complaint?.department
       });
 
-      if (res.ok) {
+      if (res.status === 200) {
         alert('Principal response submitted');
         document.getElementById(`dialog-${complaintId}`).close();
-        setComplaints(prev =>
-          prev.map(c =>
-            c.id === complaintId ? { ...c, principalResponse: responseText } : c
-          )
-        );
+        await fetchUrgentComplaints();
       }
     } catch (err) {
       console.error('Error submitting principal response:', err);

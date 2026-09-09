@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaArrowLeft, FaLock, FaHistory, FaBed, FaRegClock, FaBuilding } from 'react-icons/fa';
-import axios from 'axios'; // ✅ Added Axios import
+import API from './api';
 
 const HostelComplaint = () => {
   const navigate = useNavigate();
@@ -13,42 +13,60 @@ const HostelComplaint = () => {
   const [roomNumber, setRoomNumber] = useState('');
 
   // Fetch hostel complaint history
-  useEffect(() => {
-    const fetchComplaintHistory = async () => {
-      try {
-        const response = await axios.get('http://localhost:3005/api/hostel/all'); // ✅ Axios GET
-        setComplaintHistory(response.data);
-      } catch (error) {
-        console.error("Error fetching hostel complaints:", error);
-      }
-    };
+  const fetchComplaintHistory = async () => {
+    try {
+      const response = await API.get('/api/hostel/all');
+      setComplaintHistory(response.data);
+    } catch (error) {
+      console.error("Error fetching hostel complaints:", error);
+    }
+  };
 
+  useEffect(() => {
     fetchComplaintHistory();
   }, []);
 
   const handleSubmit = async () => {
     if (!complaintText.trim()) return;
 
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert("You must be logged in to submit a complaint. Redirecting to login...");
+      navigate('/');
+      return;
+    }
+
     setIsSubmitting(true);
 
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const userId = isAnonymous ? null : user?.id;
+
     try {
-      const response = await axios.post('http://localhost:3005/api/hostel/submit', { // ✅ Axios POST
+      const response = await API.post('/api/hostel/submit', {
         text: complaintText,
         isAnonymous,
         department: 'hostel',
         hostelBlock,
-        roomNumber: isAnonymous ? null : roomNumber
+        roomNumber: isAnonymous ? null : roomNumber,
+        userId
       });
 
-      if (response.status === 200) {
-  alert("Complaint submitted successfully");
-  setComplaintText('');
-  setHostelBlock('');
-  setRoomNumber('');
-  setIsAnonymous(false);
-}
+      if (response.status === 200 || response.status === 201) {
+        alert("Complaint submitted successfully");
+        setComplaintText('');
+        setHostelBlock('');
+        setRoomNumber('');
+        setIsAnonymous(false);
+        await fetchComplaintHistory();
+      }
     } catch (error) {
       console.error("Submission error:", error);
+      if (error.response?.status === 401) {
+        alert("Session expired. Please log in again.");
+        navigate('/');
+      } else {
+        alert("Failed to submit complaint.");
+      }
     } finally {
       setIsSubmitting(false);
     }

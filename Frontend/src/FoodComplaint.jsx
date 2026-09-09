@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import API from './api';
 import { FaArrowLeft, FaUtensils, FaLock, FaHistory, FaRegClock } from 'react-icons/fa';
 
 const FoodComplaint = () => {
@@ -11,17 +12,16 @@ const FoodComplaint = () => {
   const [complaintHistory, setComplaintHistory] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    const fetchComplaintHistory = async () => {
-      try {
-        const response = await fetch("http://localhost:3005/api/food?status=all");
-        const data = await response.json();
-        setComplaintHistory(data);
-      } catch (error) {
-        console.error("Error fetching food complaints:", error);
-      }
-    };
+  const fetchComplaintHistory = async () => {
+    try {
+      const response = await API.get("/api/food?status=all");
+      setComplaintHistory(response.data);
+    } catch (error) {
+      console.error("Error fetching food complaints:", error);
+    }
+  };
 
+  useEffect(() => {
     fetchComplaintHistory();
   }, []);
 
@@ -31,32 +31,33 @@ const FoodComplaint = () => {
       return;
     }
 
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert("You must be logged in to submit a complaint. Redirecting to login...");
+      navigate('/');
+      return;
+    }
+
     setIsSubmitting(true);
-    const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
     const userId = isAnonymous ? null : user?.id;
 
     try {
-      const response = await fetch('http://localhost:3005/api/food/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: complaintText,
-          isAnonymous,
-          userId,
-          campus,
-          issueType
-        })
+      const response = await API.post('/api/food/submit', {
+        text: complaintText,
+        isAnonymous,
+        userId,
+        campus,
+        issueType
       });
 
-      if (response.ok) {
+      if (response.status === 200) {
         setComplaintText('');
         setCampus('');
         setIssueType('');
         setIsAnonymous(false);
 
-        const updated = await fetch("http://localhost:3005/api/food?status=all");
-        const data = await updated.json();
-        setComplaintHistory(data);
+        await fetchComplaintHistory();
 
         setTimeout(() => {
           alert(`Complaint submitted ${isAnonymous ? 'anonymously' : 'successfully'}`);
@@ -66,7 +67,12 @@ const FoodComplaint = () => {
       }
     } catch (err) {
       console.error("Submission error:", err);
-      alert("Submission failed.");
+      if (err.response?.status === 401) {
+        alert("Session expired. Please log in again.");
+        navigate('/');
+      } else {
+        alert("Submission failed.");
+      }
     } finally {
       setIsSubmitting(false);
     }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaCheckCircle, FaClock, FaExclamationTriangle } from 'react-icons/fa';
+import API from './api';
 
 const PrincipalHomePage = () => {
   const navigate = useNavigate();
@@ -12,9 +13,8 @@ const PrincipalHomePage = () => {
   });
 
   useEffect(() => {
-    fetch("http://localhost:3005/api/principal/home")
-      .then(res => res.json())
-      .then(data => setCounts(data))
+    API.get("/api/principal/home")
+      .then(res => setCounts(res.data))
       .catch(err => console.error("Error fetching counts:", err));
   }, []);
 
@@ -67,7 +67,7 @@ const PrincipalHomePage = () => {
       </header>
 
       <img
-        src="/logo.svg"
+        src="/logo.png"
         alt="College Logo"
         className="absolute top-4 right-4 h-[100px]"
       />

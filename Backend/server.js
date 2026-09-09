@@ -1,7 +1,7 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
-const dotenv = require("dotenv");
 const http = require('http');
 const { Server } = require('socket.io');
 const cron = require('node-cron');
@@ -25,16 +25,21 @@ global.io = io;
 dotenv.config();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 const addVersionColumnIfMissing = async (tableName) => {
-  const query = `ALTER TABLE \`${tableName}\` ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 0`;
+  const query = `ALTER TABLE \`${tableName}\` ADD COLUMN \`version\` INT NOT NULL DEFAULT 0`;
   return new Promise((resolve, reject) => {
     db.query(query, (err, result) => {
       if (err) {
-        if (String(err.message).includes('Duplicate column name')) return resolve();
+        if (err.errno === 1060 || err.code === 'ER_DUP_FIELDNAME' || String(err.message).includes('Duplicate column name')) {
+          return resolve();
+        }
         return reject(err);
       }
       resolve(result);

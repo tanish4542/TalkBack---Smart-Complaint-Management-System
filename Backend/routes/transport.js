@@ -131,9 +131,10 @@ router.post('/:id/response', (req, res) => {
 // Student - Fetch all complaints (public view)
 router.get('/history', (req, res) => {
   const query = `
-    SELECT id, vehicleNumber, type, text, response, status, created_at, version
-    FROM transport_complaints
-    ORDER BY created_at DESC
+    SELECT tc.id, tc.vehicleNumber, tc.type, tc.text, tc.isAnonymous, tc.response, tc.status, tc.created_at, tc.version, u.email
+    FROM transport_complaints tc
+    LEFT JOIN users u ON tc.user_id = u.id
+    ORDER BY tc.created_at DESC
   `;
 
   db.query(query, (err, results) => {

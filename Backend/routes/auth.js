@@ -35,35 +35,46 @@ router.post('/login', (req, res) => {
 });
 
 // ✅ Forgot Password Route
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", (req, res) => {
   const { email } = req.body;
 
-  try {
-    const [rows] = await db.promise().query("SELECT * FROM users WHERE email = ?", [email]);
-    if (rows.length === 0) {
+  db.query("SELECT * FROM users WHERE email = ?", [email], async (err, rows) => {
+    if (err) {
+      console.error("Forgot password DB error:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
+
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
     const newPassword = crypto.randomBytes(4).toString("hex");
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
 
-    await db.promise().query("UPDATE users SET password = ? WHERE email = ?", [hashedPassword, email]);
+    db.query("UPDATE users SET password = ? WHERE email = ?", [hashedPassword, email], async (err2) => {
+      if (err2) {
+        console.error("Password update error:", err2);
+        return res.status(500).json({ message: "Failed to update password" });
+      }
 
-    const html = `
-      <p>Hello,</p>
-      <p>Your new password is: <strong>${newPassword}</strong></p>
-      <p>Please log in and change your password immediately.</p>
-    `;
+      const html = `
+        <p>Hello,</p>
+        <p>Your new password is: <strong>${newPassword}</strong></p>
+        <p>Please log in and change your password immediately.</p>
+      `;
 
-    await sendEmail(email, "🔐 Password Reset - Complaint System", html);
-
-    console.log(`Password reset email sent to ${email} with new password: ${newPassword}`);
-
-    res.status(200).json({ message: "New password sent to your email" });
-  } catch (err) {
-    console.error("Forgot password error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
+      try {
+        await sendEmail(email, "🔐 Password Reset - Complaint System", html);
+        console.log(`Password reset email sent to ${email} with new password: ${newPassword}`);
+        res.status(200).json({ message: "New password sent to your email." });
+      } catch (mailErr) {
+        console.error("Failed to send reset email via SMTP:", mailErr.message);
+        res.status(200).json({ 
+          message: `Password reset successfully! Your new password is: ${newPassword}` 
+        });
+      }
+    });
+  });
 });
 
 module.exports = router;

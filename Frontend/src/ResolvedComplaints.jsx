@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaUserGraduate, FaCheckCircle, FaRegClock } from 'react-icons/fa';
+import API from './api';
 
 const ResolvedComplaint = () => {
   const [complaints, setComplaints] = useState([]);
@@ -7,11 +8,11 @@ const ResolvedComplaint = () => {
   useEffect(() => {
     const fetchResolvedComplaints = async () => {
       try {
-        const response = await fetch('http://localhost:3005/api/principal/resolved');
-        const data = await response.json();
-        setComplaints(data);
+        const response = await API.get('/api/principal/resolved');
+        setComplaints(Array.isArray(response.data) ? response.data : []);
       } catch (error) {
         console.error('Error fetching resolved complaints:', error);
+        setComplaints([]);
       }
     };
 
