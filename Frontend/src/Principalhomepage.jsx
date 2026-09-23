@@ -1,22 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaClock, FaCheckCircle, FaExclamationTriangle, FaShieldAlt, FaArrowRight, FaChartBar } from 'react-icons/fa';
+import { FaClock, FaCheckCircle, FaExclamationTriangle, FaArrowRight } from 'react-icons/fa';
 import AppShell from './components/layout/AppShell';
-import Card, { CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/Card';
-import Button from './components/ui/Button';
+import Card from './components/ui/Card';
 import API from './api';
 
 const PrincipalHomePage = () => {
   const navigate = useNavigate();
   const [counts, setCounts] = useState({ resolved: 0, pending: 0, urgent: 0 });
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setIsLoading(true);
     API.get('/api/principal/home')
       .then((res) => setCounts(res.data))
-      .catch((err) => console.error('Error fetching principal metrics:', err))
-      .finally(() => setIsLoading(false));
+      .catch((err) => console.error('Error fetching principal metrics:', err));
   }, []);
 
   const executiveWidgets = [

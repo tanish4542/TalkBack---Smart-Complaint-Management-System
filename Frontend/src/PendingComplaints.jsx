@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaClock, FaReply, FaCheckCircle, FaArrowLeft, FaShieldAlt } from 'react-icons/fa';
+import { FaClock, FaReply, FaCheckCircle, FaArrowLeft } from 'react-icons/fa';
 import AppShell from './components/layout/AppShell';
-import Card, { CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/Card';
+import Card from './components/ui/Card';
 import Button from './components/ui/Button';
 import Badge from './components/ui/Badge';
 import Modal from './components/ui/Modal';

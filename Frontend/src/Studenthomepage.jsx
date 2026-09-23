@@ -7,7 +7,6 @@ import {
   FaBus,
   FaBroom,
   FaPizzaSlice,
-  FaPlusCircle,
   FaKey,
   FaClock,
   FaCheckCircle,
@@ -30,13 +29,10 @@ const StudentHomePage = () => {
 
   const [recentComplaints, setRecentComplaints] = useState([]);
   const [counts, setCounts] = useState({ total: 0, pending: 0, inReview: 0, resolved: 0 });
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        setIsLoading(true);
-        // Fetch academic history as sample or aggregate
         const res = await API.get('/api/academic/history');
         const data = Array.isArray(res.data) ? res.data : [];
         setRecentComplaints(data.slice(0, 5));
@@ -53,8 +49,6 @@ const StudentHomePage = () => {
         });
       } catch (err) {
         console.error('Error loading student dashboard data:', err);
-      } finally {
-        setIsLoading(false);
       }
     };
 
