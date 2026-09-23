@@ -1,154 +1,161 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../models/db'); // MySQL connection
+const db = require('../models/db');
 const sendEmail = require('../utils/mailer');
+const { authorizeRoles } = require('../middleware/authMiddleware');
+const complaintService = require('../utils/complaintService');
 
-// POST - Submit Academic Complaint
-router.post('/submit', (req, res) => {
-  const { description, course, type, isAnonymous, userId } = req.body;
+// POST - Submit Academic Complaint (Student only)
+router.post('/submit', authorizeRoles('student', 'admin', 'principal'), async (req, res) => {
+  try {
+    const { description, course, type, isAnonymous } = req.body;
+    const userId = isAnonymous ? null : (req.user?.id || req.body.userId);
 
-  const query = `
-    INSERT INTO academic_complaints (description, course, complaint_type, is_anonymous, user_id)
-    VALUES (?, ?, ?, ?, ?)
-  `;
-
-  db.query(
-    query,
-    [description, course, type, isAnonymous, isAnonymous ? null : userId],
-    (err, result) => {
-      if (err) {
-        console.error('Error submitting complaint:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.status(200).json({ message: 'Complaint submitted successfully' });
-    }
-  );
-});
-
-// GET - Admin: Fetch all complaints (optionally filtered by status)
-router.get('/', (req, res) => {
-  const { status } = req.query;
-  const baseQuery = `
-    SELECT ac.*, u.email FROM academic_complaints ac
-    LEFT JOIN users u ON ac.user_id = u.id
-  `;
-  const fullQuery = status && status !== 'all'
-    ? `${baseQuery} WHERE ac.status = ? ORDER BY submitted_at DESC`
-    : `${baseQuery} ORDER BY submitted_at DESC`;
-
-  db.query(fullQuery, status && status !== 'all' ? [status] : [], (err, results) => {
-    if (err) {
-      console.error('Error fetching complaints:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.status(200).json(results);
-  });
-});
-
-// PUT - Admin: Update Complaint Status
-router.put('/:id/status', (req, res) => {
-  const { id } = req.params;
-  const { status, version } = req.body;
-
-  if (version === undefined || version === null) {
-    return res.status(400).json({ error: 'Version is required' });
-  }
-
-  db.query(
-    'UPDATE academic_complaints SET status = ?, version = version + 1 WHERE id = ? AND version = ?',
-    [status, id, Number(version)],
-    (err, result) => {
-      if (err) {
-        console.error('Error updating status:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-
-      if (result.affectedRows === 0) {
-        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
-      }
-
-      global.io?.emit('complaintUpdated', { id: Number(id), status, department: 'academic' });
-      res.json({ message: 'Status updated successfully', version: Number(version) + 1 });
-    }
-  );
-});
-router.post('/:id/response', (req, res) => {
-  const { id } = req.params;
-  const { response, resolvedBy, version } = req.body;
-
-  if (version === undefined || version === null) {
-    return res.status(400).json({ error: 'Version is required' });
-  }
-
-  const resolver = resolvedBy || 'Admin';
-
-  const updateQuery = `
-    UPDATE academic_complaints
-    SET response = ?, status = 'resolved', resolved_by = ?, submitted_at = CURRENT_TIMESTAMP, version = version + 1
-    WHERE id = ? AND version = ?
-  `;
-
-  db.query(updateQuery, [response, resolver, id, Number(version)], (err, result) => {
-    if (err) {
-      console.error('Error saving response:', err);
-      return res.status(500).json({ error: 'Database error' });
+    if (!description || !description.trim()) {
+      return res.status(400).json({ error: 'Description is required' });
     }
 
-    const emailQuery = `
-      SELECT u.email, ac.description
-      FROM academic_complaints ac
-      JOIN users u ON ac.user_id = u.id
-      WHERE ac.id = ?
-    `;
-
-    db.query(emailQuery, [id], async (err2, results) => {
-      if (err2) {
-        console.error('Error fetching email:', err2);
-        return res.status(500).json({ error: 'Failed to fetch email' });
-      }
-
-      if (results.length === 0) return res.status(404).json({ error: 'User not found' });
-
-      const { email, description } = results[0];
-
-      const html = `
-        <p>Hello,</p>
-        <p>Your academic complaint:</p>
-        <blockquote>${description}</blockquote>
-        <p>has been resolved by the academic team.</p>
-        <p><strong>Response:</strong> ${response}</p>
-        <p>Thank you.</p>
-      `;
-
-      try {
-        await sendEmail(email, "📚 Academic Complaint Resolved", html);
-        console.log(`Email sent to ${email}`);
-      } catch (mailErr) {
-        console.error('Failed to send email:', mailErr);
-      }
-
-      res.json({ message: 'Response saved and user notified' });
+    const result = await complaintService.createComplaintRecord({
+      userId,
+      departmentName: 'Academics',
+      description,
+      isAnonymous,
+      details: { course, type }
     });
-  });
-});
-// Student - View academic complaint history
-// Student - View academic complaint history
-router.get('/history', (req, res) => {
-  const query = `
-    SELECT ac.id, ac.course, ac.complaint_type, ac.description, ac.response, ac.status, ac.submitted_at, ac.resolved_by, ac.version,
-           u.email
-    FROM academic_complaints ac
-    LEFT JOIN users u ON ac.user_id = u.id
-    ORDER BY ac.submitted_at DESC
-  `;
 
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error('Error fetching academic complaint history:', err);
-      return res.status(500).json({ error: 'Database error' });
+    res.status(200).json({
+      message: 'Complaint submitted successfully',
+      trackingToken: result.trackingToken
+    });
+  } catch (err) {
+    console.error('Error submitting academic complaint:', err);
+    res.status(500).json({ error: err.message || 'Database error' });
+  }
+});
+
+// GET - Admin/Student list (Admin/Principal or Student history)
+router.get('/', authorizeRoles('admin', 'principal', 'student'), async (req, res) => {
+  try {
+    const { status, page, limit } = req.query;
+    const isStudent = req.user?.role === 'student';
+
+    const result = await complaintService.getComplaintsPaginated({
+      departmentName: 'Academics',
+      status,
+      page,
+      limit,
+      isStudentHistory: isStudent,
+      userId: req.user?.id
+    });
+
+    res.status(200).json(result.data);
+  } catch (err) {
+    console.error('Error fetching academic complaints:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// GET - Student history explicit route
+router.get('/history', authorizeRoles('student', 'admin', 'principal'), async (req, res) => {
+  try {
+    const result = await complaintService.getComplaintsPaginated({
+      departmentName: 'Academics',
+      status: 'all',
+      page: req.query.page || 1,
+      limit: req.query.limit || 50,
+      isStudentHistory: true,
+      userId: req.user?.id
+    });
+
+    res.status(200).json(result.data);
+  } catch (err) {
+    console.error('Error fetching academic history:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// PUT - Admin: Update Complaint Status (Admin/Principal only)
+router.put('/:id/status', authorizeRoles('admin', 'principal'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, version } = req.body;
+
+    if (version === undefined || version === null) {
+      return res.status(400).json({ error: 'Version is required' });
     }
-    res.status(200).json(results);
-  });
+
+    const result = await complaintService.updateComplaintStatusOptimistic({
+      complaintId: id,
+      newStatus: status,
+      changedBy: req.user?.role === 'principal' ? 'Principal' : 'Admin',
+      expectedVersion: version
+    });
+
+    res.json(result);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ message: err.message, error: err.message });
+    }
+    console.error('Error updating academic status:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// POST - Admin: Submit Response and notify student
+router.post('/:id/response', authorizeRoles('admin', 'principal'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { response, resolvedBy, version } = req.body;
+
+    if (!response || !response.trim()) {
+      return res.status(400).json({ error: 'Response is required' });
+    }
+    if (version === undefined || version === null) {
+      return res.status(400).json({ error: 'Version is required' });
+    }
+
+    const resolver = resolvedBy || (req.user?.role === 'principal' ? 'Principal' : 'Admin');
+
+    const result = await complaintService.updateComplaintStatusOptimistic({
+      complaintId: id,
+      newStatus: 'resolved',
+      responseText: response,
+      changedBy: resolver,
+      expectedVersion: version
+    });
+
+    // Send email to non-anonymous user if email exists
+    db.query(`
+      SELECT u.email, c.description, c.is_anonymous
+      FROM complaints c
+      LEFT JOIN users u ON c.user_id = u.id
+      WHERE c.id = ?
+    `, [id], async (err, rows) => {
+      if (!err && rows && rows.length > 0 && !rows[0].is_anonymous && rows[0].email) {
+        const html = `
+          <p>Hello,</p>
+          <p>Your academic complaint:</p>
+          <blockquote>${rows[0].description}</blockquote>
+          <p>has been <strong>resolved</strong> by ${resolver}.</p>
+          <p><strong>Response:</strong> ${response}</p>
+          <p>Thank you.</p>
+        `;
+        try {
+          await sendEmail(rows[0].email, "📚 Academic Complaint Resolved", html);
+        } catch (mailErr) {
+          console.error("Email send note:", mailErr.message);
+        }
+      }
+    });
+
+    res.json({ message: 'Response saved and user notified', version: result.version });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ message: err.message, error: err.message });
+    }
+    console.error('Error saving academic response:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 module.exports = router;

@@ -1,178 +1,199 @@
-import React, { useState } from "react";
-import { FaUserShield, FaUserGraduate, FaUserTie } from "react-icons/fa";
-import { Link, useNavigate } from "react-router-dom";
-import axios from "axios";
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { FaUserGraduate, FaUserShield, FaUserTie, FaEye, FaEyeSlash, FaShieldAlt, FaLock } from 'react-icons/fa';
+import API from './api';
+import Button from './components/ui/Button';
+import Input from './components/ui/Input';
+import { useToast } from './components/ui/Toast';
 
-function LoginPage() {
-  const [selectedRole, setSelectedRole] = useState(null);
-  const [animate, setAnimate] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+const LoginPage = () => {
   const navigate = useNavigate();
+  const { showError, showSuccess } = useToast();
+  
+  const [selectedRole, setSelectedRole] = useState('student');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleRoleSelect = (role) => {
-    setAnimate(true);
-    setTimeout(() => {
-      setSelectedRole(role);
-      setAnimate(false);
-    }, 400);
-  };
+  const roles = [
+    { id: 'student', title: 'Student', icon: FaUserGraduate, desc: 'Submit and track campus complaints' },
+    { id: 'admin', title: 'Department Admin', icon: FaUserShield, desc: 'Manage department ticket workflows' },
+    { id: 'principal', title: 'Principal Executive', icon: FaUserTie, desc: 'Overlook cross-department analytics' }
+  ];
 
-  const floatAnimation = {
-  animation: "float 3s ease-in-out infinite"
-};
+  const handleLogin = async (e) => {
+    e?.preventDefault();
+    if (!email || !email.trim()) {
+      setErrorMessage('Please enter your email address');
+      return;
+    }
+    if (!password) {
+      setErrorMessage('Please enter your password');
+      return;
+    }
 
+    setIsLoading(true);
+    setErrorMessage('');
 
-  const handleBack = () => {
-    setAnimate(true);
-    setTimeout(() => {
-      setSelectedRole(null);
-      setAnimate(false);
-    }, 400);
-  };
-
-  const handleLogin = async () => {
     try {
-      const response = await axios.post("http://localhost:3005/api/auth/login", {
-        email,
+      const response = await API.post('/api/auth/login', {
+        email: email.trim(),
         password,
-        role: selectedRole,
+        role: selectedRole
       });
 
       const { token, user } = response.data;
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
+      showSuccess(`Welcome back, ${user.name || user.email}!`);
 
-      if (user.role === "student") {
-        navigate("/student/home");
-      } else if (user.role === "admin") {
-        navigate("/admin/home");
-      }else if (user.role==="principal"){
-        navigate("/principal/home");
-      } else {
-        alert("Invalid role.");
-      }
-    } catch (error) {
-      alert(error.response?.data?.error || "Login failed");
+      if (user.role === 'student') navigate('/student/home');
+      else if (user.role === 'admin') navigate('/admin/home');
+      else if (user.role === 'principal') navigate('/principal/home');
+      else navigate('/');
+
+    } catch (err) {
+      const msg = err.response?.data?.error || err.response?.data?.message || 'Authentication failed. Please check credentials.';
+      setErrorMessage(msg);
+      showError(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    
-    <>
-    <style>
-      {`
-        @keyframes float {
-          0% { transform: translateY(0px); }
-          50% { transform: translateY(-10px); }
-          100% { transform: translateY(0px); }
-        }
-      `}
-    </style>
+    <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden font-sans">
+      {/* Background Glow Blobs */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-10 right-10 w-[400px] h-[400px] bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-r from-blue-100 via-purple-300 to-blue-200 relative">
-      {/* Top logos */}
-      <img src="/logo.png" alt="College Logo" className="absolute top-3 right-3 w-[110px] h-[110px]" />
-
-      <img src="/images.png" alt="Mascot" className="absolute top-4 left-4 w-[110px]" style={floatAnimation} />
-
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <img src="/logo1.png" alt="Logo" style={{ width: '650px', marginTop: '80px', marginBottom:'80px'}} />
+      {/* Main Container */}
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 text-center">
+        {/* Logo Mark */}
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white font-black text-2xl shadow-xl shadow-indigo-600/30 mb-4 border border-indigo-500/30">
+          S
+        </div>
+        <h1 className="text-3xl font-extrabold text-white tracking-tight">
+          Smart Complaint Management
+        </h1>
+        <p className="mt-2 text-sm text-slate-400 font-medium">
+          Unified Operational Platform for Campus Grievance Resolution
+        </p>
       </div>
 
-      {selectedRole === null ? (
-        <div className={`transition-all duration-500 transform ${animate ? "scale-75 opacity-0" : "scale-100 opacity-100"} text-center mt-[10px]`}>
-          {/* Centered Logo and Title */}
-        <h1 className="text-5xl font-bold text-blue-800 drop-shadow-lg">
-          Welcome to the Complaint Box 🎯</h1>
-
-          {/* Role Cards */}
-          <div className="flex justify-center items-center gap-12 mt-10">
-            <div
-              onClick={() => handleRoleSelect("admin")}
-              className="cursor-pointer w-60 h-60 p-8 bg-white rounded-2xl shadow-lg hover:scale-105 hover:bg-blue-100 transition duration-300 flex flex-col items-center justify-center space-y-4"
-            >
-              <FaUserShield className="text-7xl text-blue-600" />
-              <h3 className="text-2xl font-bold text-gray-700">ADMIN</h3>
-            </div>
-
-            <div
-              onClick={() => handleRoleSelect("student")}
-              className="cursor-pointer w-60 h-60 p-8 bg-white rounded-2xl shadow-lg hover:scale-105 hover:bg-blue-100 transition duration-300 flex flex-col items-center justify-center space-y-4"
-            >
-              <FaUserGraduate className="text-7xl text-pink-600" />
-              <h2 className="text-2xl font-bold text-gray-700">STUDENT</h2>
-            </div>
-
-            <div
-              onClick={() => handleRoleSelect("principal")}
-              className="cursor-pointer w-60 h-60 p-8 bg-white rounded-2xl shadow-lg hover:scale-105 hover:bg-blue-100 transition duration-300 flex flex-col items-center justify-center space-y-4"
-            >
-              <FaUserTie className="text-7xl text-purple-600" />
-              <h2 className="text-2xl font-bold text-gray-700">PRINCIPAL</h2>
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4">
+        <div className="bg-white py-8 px-6 shadow-2xl rounded-2xl border border-slate-100 sm:px-10">
+          
+          {/* Role Tab Selector */}
+          <div className="mb-6">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+              Select Your Access Portal
+            </label>
+            <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+              {roles.map((r) => {
+                const Icon = r.icon;
+                const isSelected = selectedRole === r.id;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRole(r.id);
+                      setErrorMessage('');
+                    }}
+                    className={`flex flex-col items-center justify-center py-2.5 px-1 rounded-lg text-xs font-bold transition duration-200 ${
+                      isSelected
+                        ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/60'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                    }`}
+                  >
+                    <Icon size={16} className={isSelected ? 'text-indigo-600 mb-1' : 'text-slate-400 mb-1'} />
+                    <span>{r.title.split(' ')[0]}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <h1 className=" text-2xl  font-bold text-gray-400 drop-shadow-lg mt-14 text-center">
-            “🎤Your voice matters – speak up, we’re listening.” </h1>
-        </div>
-      ) :(
-        
-        <div className="bg-gradient-to-br from-white-300 via-blue-300 to-pink-200 p-6 rounded-lg shadow-md w-80 relative">
-          <h2 className="text-3xl font-bold text-center text-blue-600 mb-8">
-            Hello {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}! 👋
-          </h2>
 
-          <form className="space-y-6">
-            <div>
-              <label className="block text-gray-700 mb-3">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                placeholder="Enter your email"
-              />
-            </div>
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            {errorMessage && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center">
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            <Input
+              label="Email Address"
+              type="email"
+              placeholder="e.g. student@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
 
             <div>
-              <label className="block text-gray-700 mb-3">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                placeholder="Enter your password"
-              />
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                  Password
+                </label>
+                <Link to="/forgot-password" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+                  Forgot password?
+                </Link>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-200 focus:border-indigo-600 transition duration-150 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <FaEyeSlash size={16} /> : <FaEye size={16} />}
+                </button>
+              </div>
             </div>
 
-            <div className="flex justify-between items-center">
-              <button type="button" onClick={handleBack} className="text-blue-600 hover:underline text-sm">
-                ← Back
-              </button>
-              <Link to="/forgot-password" className="text-blue-600 hover:underline text-sm">
-                Forgot Password?
-              </Link>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleLogin}
-              className="w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition duration-300"
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              className="w-full mt-2"
+              isLoading={isLoading}
             >
-              Login
-            </button>
+              Sign In to {selectedRole.toUpperCase()} Dashboard
+            </Button>
           </form>
-        </div>
-      )}
-    <p className="absolute bottom-2 right-4 text-xs text-gray-500 z-50">
-  © JARVIS | All Rights Reserved
-</p>
-    </div>
-  </>
-  );
-  
-}
 
+          {/* Track Anonymous Direct Link */}
+          <div className="mt-6 pt-6 border-t border-slate-100 text-center">
+            <p className="text-xs text-slate-500 mb-2">Submitted a complaint anonymously?</p>
+            <Link
+              to="/track-anonymous"
+              className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 hover:text-indigo-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 px-4 py-2 rounded-xl transition"
+            >
+              <FaLock className="text-amber-500" />
+              <span>Track Anonymous Complaint</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <p className="mt-8 text-center text-xs text-slate-500">
+          © {new Date().getFullYear()} SCMS Engineering Platform. Enterprise Security & SSL Encrypted.
+        </p>
+      </div>
+    </div>
+  );
+};
 
 export default LoginPage;

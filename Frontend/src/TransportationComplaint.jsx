@@ -1,256 +1,208 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FaBus, FaHistory, FaLock } from 'react-icons/fa';
+import AppShell from './components/layout/AppShell';
+import Card, { CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/Card';
+import Button from './components/ui/Button';
+import Badge from './components/ui/Badge';
+import Modal from './components/ui/Modal';
+import EmptyState from './components/ui/EmptyState';
+import { useToast } from './components/ui/Toast';
 import API from './api';
-import {
-  FaArrowLeft, FaLock, FaBus,
-  FaRegClock, FaRoute
-} from 'react-icons/fa';
 
 const TransportationComplaint = () => {
   const navigate = useNavigate();
-  const [complaintText, setComplaintText] = useState('');
-  const [isAnonymous, setIsAnonymous] = useState(false);
-  const [complaintHistory, setComplaintHistory] = useState([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [routeNumber, setRouteNumber] = useState('');
-  const [vehicleNumber, setVehicleNumber] = useState('');
-  const [issueType, setIssueType] = useState('');
+  const { showSuccess, showError, showInfo } = useToast();
 
-  const fetchComplaintHistory = async () => {
+  const [description, setDescription] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
+  const [type, setType] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [generatedToken, setGeneratedToken] = useState(null);
+
+  const fetchHistory = async () => {
     try {
-      const { data } = await API.get('/api/transportation/history');
-      setComplaintHistory(data);
-    } catch (error) {
-      console.error("Error fetching transportation complaints:", error);
+      const res = await API.get('/api/transportation/history');
+      setHistory(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Error fetching transportation history:', err);
     }
   };
 
   useEffect(() => {
-    fetchComplaintHistory();
+    fetchHistory();
   }, []);
 
-  const handleSubmit = async () => {
-    if (!complaintText.trim() || !routeNumber || !issueType) return;
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert("You must be logged in to submit a complaint. Redirecting to login...");
-      navigate('/');
+  const handleSubmit = async (e) => {
+    e?.preventDefault();
+    if (!description || !description.trim()) {
+      showError('Please enter a description for your transportation complaint.');
       return;
     }
 
     setIsSubmitting(true);
-
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const userId = isAnonymous ? null : user?.id;
-
     try {
-      await API.post('/api/transportation/submit', {
-        vehicleNumber: vehicleNumber || '',
-        type: issueType,
-        text: complaintText,
-        isAnonymous,
-        userId
+      const res = await API.post('/api/transportation/submit', {
+        description: description.trim(),
+        vehicleNumber,
+        type,
+        isAnonymous
       });
 
-      alert(`Transportation complaint submitted ${isAnonymous ? 'anonymously' : ''}`);
-      setComplaintText('');
-      setRouteNumber('');
-      setVehicleNumber('');
-      setIssueType('');
-
-      // Refresh history
-      await fetchComplaintHistory();
-    } catch (error) {
-      console.error("Submission error:", error);
-      if (error.response?.status === 401) {
-        alert("Session expired. Please log in again.");
-        navigate('/');
-      } else {
-        alert("Failed to submit complaint.");
+      if (res.status === 200) {
+        if (isAnonymous && res.data?.trackingToken) {
+          setGeneratedToken(res.data.trackingToken);
+        } else {
+          showSuccess('Transportation complaint submitted successfully!');
+        }
+        setDescription('');
+        setVehicleNumber('');
+        setType('');
+        setIsAnonymous(false);
+        await fetchHistory();
       }
+    } catch (err) {
+      showError(err.response?.data?.error || 'Failed to submit transportation complaint.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-     <div className="min-h-screen bg-gradient-to-br from-gray-400 via-blue-300 to-black p-6">      
-      <header className="flex justify-between items-center p-6 shadow-sm">
-        <button onClick={() => navigate(-1)} className="text-gray-700 hover:text-gray-900">
-          <FaArrowLeft size={20} />
-        </button>
-        <h1 className="text-4xl font-bold text-gray-800 flex items-center">
-          <FaBus className="mr-4" /> TRANSPORTATION COMPLAINT PORTAL
-        </h1>
-        <div className="w-6"></div>
-      </header>
-
-      <hr className="border-gray-200" />
-
-      <main className="p-6 max-w-3xl mx-auto">
-        {/* New Complaint Form */}
-        <div className="bg-gray-150 rounded-lg p-6 shadow-sm border border-gray-200 mb-6">
-          <h2 className="text-lg font-medium text-gray-700 mb-4 flex items-center">
-            <FaLock className="mr-2" /> NEW COMPLAINT
-          </h2>
-
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Route Number*</label>
-              <select
-                value={routeNumber}
-                onChange={(e) => setRouteNumber(e.target.value)}
-                className="w-full border border-gray-300 rounded p-2 text-sm"
-              >
-                <option value="">Select route</option>
-                <option>Route 1 (Main Campus)</option>
-                <option>Route 2 (North Campus)</option>
-                <option>Route 3 (South Campus)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Number (Optional)</label>
-              <input
-                type="text"
-                value={vehicleNumber}
-                onChange={(e) => setVehicleNumber(e.target.value)}
-                className="w-full border border-gray-300 rounded p-2 text-sm"
-                placeholder="E.g. KA01AB1234"
-              />
-            </div>
+    <AppShell>
+      <div className="space-y-8 max-w-4xl mx-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-3">
+              <span className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <FaBus size={20} />
+              </span>
+              Campus Transport Portal
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              File complaints regarding bus timing, driver behavior, route changes, or vehicle condition.
+            </p>
           </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Complaint Type*</label>
-            <select
-              value={issueType}
-              onChange={(e) => setIssueType(e.target.value)}
-              className="w-full border border-gray-300 rounded p-2 text-sm mb-4"
-            >
-              <option value="">Select type</option>
-              <option>Bus Schedule</option>
-              <option>Driver Behavior</option>
-              <option>Vehicle Condition</option>
-              <option>Route Change</option>
-              <option>Other</option>
-            </select>
-          </div>
-
-          <textarea
-            className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-200 focus:border-blue-400 mb-4"
-            rows="6"
-            placeholder="Describe your transportation complaint (include time, location, etc.)..."
-            value={complaintText}
-            onChange={(e) => setComplaintText(e.target.value)}
-          ></textarea>
-
-          <div className="flex items-center mb-6">
-            <input
-              type="checkbox"
-              id="anonymous-transport"
-              checked={isAnonymous}
-              onChange={() => setIsAnonymous(!isAnonymous)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="anonymous-transport" className="ml-2 text-gray-700">
-              Submit anonymously <span className="text-sm text-gray-500">(details will be hidden)</span>
-            </label>
-          </div>
-
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitting || !complaintText.trim() || !routeNumber || !issueType}
-            className={`w-full py-3 px-4 rounded-lg font-medium transition-colors shadow-sm ${
-              isSubmitting
-                ? 'bg-blue-400 cursor-not-allowed'
-                : 'bg-blue-800 hover:bg-blue-600 text-white'
-            }`}
-          >
-            {isSubmitting ? 'Submitting...' : 'SUBMIT COMPLAINT'}
-            {isAnonymous && (
-              <span className="text-blue-100 text-sm ml-2">(Anonymous)</span>
-            )}
-          </button>
+          <Button variant="outline" size="sm" onClick={() => navigate(-1)}>Back</Button>
         </div>
 
-        {/* Complaint History */}
-        <hr className="separator-line border-gray-200 my-4" />
+        <Card className="shadow-lg">
+          <CardHeader className="bg-slate-50/50">
+            <CardTitle>File Transport Complaint</CardTitle>
+            <CardDescription>Provide bus and route information for transport in-charge</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1.5">
+                  Description <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Describe your transport issue..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm focus:ring-4 focus:ring-indigo-200"
+                />
+              </div>
 
-        <div className="relative my-2">
-          <div className="absolute inset-0 flex items-center"></div>
-          <div className="relative flex justify-center">
-            <span className="px-4 bg-off-white text-gray-600">
-              Complaint History (View Only)
-            </span>
-          </div>
-        </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 mb-1.5">Bus / Vehicle No.</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Bus 12 (KA-09-F-1234)"
+                    value={vehicleNumber}
+                    onChange={(e) => setVehicleNumber(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm"
+                  />
+                </div>
 
-        <hr className="separator-line border-gray-200 my-4" />
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 mb-1.5">Issue Type</label>
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm"
+                  >
+                    <option value="">Select Category...</option>
+                    <option value="Schedule Delay">Schedule Delay / Missed Route</option>
+                    <option value="Driver Conduct">Driver Conduct / Reckless Driving</option>
+                    <option value="Vehicle Condition">Vehicle Maintenance / AC / Seating</option>
+                    <option value="Overcrowding">Overcrowding</option>
+                  </select>
+                </div>
+              </div>
 
-        <div className="bg-gray-150 rounded-lg p-6 shadow-sm border border-gray-200">
-          <div className="flex items-center text-gray-700 mb-4">
-            <FaRoute className="mr-2" />
-            <h3 className="font-medium">Archived Complaints</h3>
-          </div>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="anon-transport"
+                  checked={isAnonymous}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 text-indigo-600 rounded"
+                />
+                <label htmlFor="anon-transport" className="text-xs font-bold text-slate-900 cursor-pointer flex items-center gap-1.5">
+                  <FaLock className="text-amber-500" /> Submit Anonymously
+                </label>
+              </div>
 
-          {complaintHistory.length > 0 ? (
-            <div className="space-y-4">
-              {complaintHistory.map((complaint) => (
-                <div key={complaint.id} className="p-4 bg-white rounded border border-gray-200">
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="text-gray-700 italic">"{complaint.text}"</p>
-                      <div className="mt-2 text-sm text-gray-600">
-                        <span className="mr-3">Type: {complaint.type}</span>
-                        {complaint.vehicleNumber && (
-                          <span>Vehicle: {complaint.vehicleNumber}</span>
-                        )}
+              <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isSubmitting}>
+                Submit Transport Ticket
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><FaHistory /> Transport Ticket History</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {history.length > 0 ? (
+              <div className="divide-y divide-slate-100">
+                {history.map((c) => (
+                  <div key={c.id} className="p-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-indigo-600">#{c.id}</span>
+                        <Badge status={c.status} />
                       </div>
-
-                      {complaint.response && (
-                        <div className="mt-2 text-sm text-blue-600">
-                          <strong>Admin Response:</strong> {complaint.response}
-                        </div>
-                      )}
+                      <span className="text-[11px] text-slate-400">{c.created_at ? new Date(c.created_at).toLocaleDateString() : 'N/A'}</span>
                     </div>
-                    <span className={`px-2 py-1 rounded text-xs h-fit ${
-                      complaint.status === 'resolved'
-                        ? 'bg-green-100 text-green-800'
-                        : complaint.status === 'acknowledged'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {complaint.status.replace('_', ' ')}
-                    </span>
-                  </div>
-
-                  {!complaint.isAnonymous && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      Submitted by: {complaint.email || 'N/A'}
-                    </div>
-                  )}
-
-                  <div className="flex justify-between mt-3 text-sm text-gray-500">
-                    <div>
-                      <FaRegClock className="inline mr-1" />
-                      {complaint.created_at
-                        ? new Date(complaint.created_at).toLocaleString()
-                        : 'N/A'}
-                    </div>
-                    {complaint.resolved_by && (
-                      <div>Resolved by: {complaint.resolved_by}</div>
+                    <p className="text-xs text-slate-800 bg-slate-50 p-3 rounded-xl border border-slate-100 italic">"{c.description}"</p>
+                    {c.response && (
+                      <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs mt-2">
+                        <span className="font-bold text-emerald-900 block">Response ({c.resolved_by || 'Transport In-charge'}):</span>
+                        <p className="text-emerald-800">{c.response}</p>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-center py-4">No transportation complaints found</p>
-          )}
+                ))}
+              </div>
+            ) : (
+              <div className="p-8">
+                <EmptyState title="No History Found" description="No transport tickets registered." />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Modal isOpen={Boolean(generatedToken)} onClose={() => setGeneratedToken(null)} title="Anonymous Tracking Token">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600">Save this token to track your anonymous complaint status:</p>
+          <div className="p-3 bg-slate-100 rounded-xl font-mono text-xs font-bold select-all">{generatedToken}</div>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" onClick={() => { navigator.clipboard.writeText(generatedToken); showInfo('Token copied!'); }}>Copy Token</Button>
+            <Button size="sm" variant="secondary" onClick={() => setGeneratedToken(null)}>Close</Button>
+          </div>
         </div>
-      </main>
-    </div>
+      </Modal>
+    </AppShell>
   );
 };
 

@@ -1,5 +1,7 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
+import { ToastProvider } from './components/ui/Toast';
+
 import LoginPage from './LoginPage';
 import ForgotPasswordPage from './ForgotPasswordPage';
 import Studenthomepage from './Studenthomepage';
@@ -10,6 +12,7 @@ import TransportationComplaint from './TransportationComplaint';
 import SanitationComplaint from './SanitationComplaint';
 import FoodComplaint from './FoodComplaint';
 
+import AnonymousTracker from './AnonymousTracker';
 
 import AdminHome from './AdminHome';
 import AdministrationDashboard from './AdministrationDashboard';
@@ -26,31 +29,35 @@ import UrgentComplaints from './UrgentComplaints';
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LoginPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/student/home" element={<Studenthomepage/>} />
-      <Route path="/student/administration" element={<AdministrationComplaint />} />
-      <Route path="/student/academics" element={<AcademicsComplaint />} />
-      <Route path="/student/hostel" element={<HostelComplaint />} /> 
-      <Route path="/student/transportation" element={<TransportationComplaint />} /> 
-      <Route path="/student/sanitation" element={<SanitationComplaint />} /> 
-      <Route path="/student/food" element={<FoodComplaint />} /> 
+    <ToastProvider>
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/track-anonymous" element={<AnonymousTracker />} />
+        <Route path="/student/home" element={<Studenthomepage />} />
+        <Route path="/student/administration" element={<AdministrationComplaint />} />
+        <Route path="/student/academics" element={<AcademicsComplaint />} />
+        <Route path="/student/hostel" element={<HostelComplaint />} />
+        <Route path="/student/transportation" element={<TransportationComplaint />} />
+        <Route path="/student/sanitation" element={<SanitationComplaint />} />
+        <Route path="/student/food" element={<FoodComplaint />} />
 
-      {/* Admin Routes */}
-      <Route path="/admin/home" element={<AdminHome />} />
-      <Route path="/admin/administration" element={<AdministrationDashboard />} />
-      <Route path="/admin/academics" element={<AcademicsDashboard />} />
-      <Route path="/admin/hostel" element={<HostelDashboard />} />
-      <Route path="/admin/transportation" element={<TransportationDashboard />} />
-      <Route path="/admin/sanitation" element={<SanitationDashboard />} />
-      <Route path="/admin/food" element={<FoodDashboard />} />
+        {/* Admin Routes */}
+        <Route path="/admin/home" element={<AdminHome />} />
+        <Route path="/admin/administration" element={<AdministrationDashboard />} />
+        <Route path="/admin/academics" element={<AcademicsDashboard />} />
+        <Route path="/admin/hostel" element={<HostelDashboard />} />
+        <Route path="/admin/transportation" element={<TransportationDashboard />} />
+        <Route path="/admin/sanitation" element={<SanitationDashboard />} />
+        <Route path="/admin/food" element={<FoodDashboard />} />
 
-      <Route path="/principal/home" element={<PrincipalHomePage/>}/>
-      <Route path="/principal/resolved" element={<ResolvedComplaints status="resolved" />} />
-      <Route path="/principal/pending" element={<PendingComplaints status="pending" />} />
-      <Route path="/principal/urgent" element={<UrgentComplaints status="urgent" />} />
-    </Routes>
+        {/* Principal Routes */}
+        <Route path="/principal/home" element={<PrincipalHomePage />} />
+        <Route path="/principal/resolved" element={<ResolvedComplaints status="resolved" />} />
+        <Route path="/principal/pending" element={<PendingComplaints status="pending" />} />
+        <Route path="/principal/urgent" element={<UrgentComplaints status="urgent" />} />
+      </Routes>
+    </ToastProvider>
   );
 }
 

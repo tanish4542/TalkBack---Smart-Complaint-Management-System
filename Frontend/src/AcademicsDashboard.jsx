@@ -1,259 +1,313 @@
 import React, { useState, useEffect } from 'react';
-import { FaSearch, FaReply, FaCheckCircle, FaBook, FaUserGraduate } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
+import { FaSearch, FaReply, FaCheckCircle, FaBook, FaSync } from 'react-icons/fa';
 import { io } from 'socket.io-client';
+import AppShell from './components/layout/AppShell';
+import Card from './components/ui/Card';
+import Button from './components/ui/Button';
+import Badge from './components/ui/Badge';
+import Modal from './components/ui/Modal';
+import EmptyState from './components/ui/EmptyState';
+import { TableSkeleton } from './components/ui/LoadingState';
+import { useToast } from './components/ui/Toast';
+import API from './api';
 
 const AcademicsDashboard = () => {
+  const navigate = useNavigate();
+  const { showSuccess, showError, showWarning, showInfo } = useToast();
+
   const [complaints, setComplaints] = useState([]);
   const [filter, setFilter] = useState('pending');
   const [searchTerm, setSearchTerm] = useState('');
-  const [responses, setResponses] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Response modal state
+  const [activeComplaint, setActiveComplaint] = useState(null);
+  const [responseText, setResponseText] = useState('');
+  const [isSubmittingResponse, setIsSubmittingResponse] = useState(false);
+
+  const fetchComplaints = async () => {
+    try {
+      setIsLoading(true);
+      const res = await API.get(`/api/academic?status=${filter}`);
+      setComplaints(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Error loading academic admin complaints:', err);
+      showError('Failed to fetch academic complaints.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchComplaints = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`http://localhost:3005/api/academic?status=${filter}`, {
-          headers: {
-            'Authorization': token ? `Bearer ${token}` : '',
-            'Content-Type': 'application/json'
-          }
-        });
-        const data = await response.json();
-        setComplaints(data);
-      } catch (error) {
-        console.error("Error fetching complaints:", error);
-      }
-    };
     fetchComplaints();
   }, [filter]);
 
+  // Real-time Socket.IO sync
   useEffect(() => {
-    const socket = io('http://localhost:3005');
+    const token = localStorage.getItem('token');
+    const socket = io('http://localhost:3005', {
+      auth: { token }
+    });
+
     socket.on('complaintUpdated', (payload) => {
-      if (payload.department === 'academic') {
-        setComplaints(prev => prev.map(c => c.id === payload.id ? { ...c, status: payload.status } : c));
-      }
+      setComplaints((prev) =>
+        prev.map((c) => (c.id === payload.id ? { ...c, status: payload.status, version: payload.version } : c))
+      );
+      showInfo(`Ticket #${payload.id} status updated in real-time.`);
     });
 
     return () => socket.disconnect();
-  }, []);
+  }, [showInfo]);
 
-  const handleStatusUpdate = async (complaintId, newStatus) => {
-    const hasResponse = responses[complaintId] || complaints.find(c => c.id === complaintId)?.response;
-    const complaint = complaints.find(c => c.id === complaintId);
-    if (newStatus === 'resolved' && !hasResponse) {
-      alert("Please respond before resolving the complaint.");
+  const handleStatusUpdate = async (complaint, newStatus) => {
+    if (newStatus === 'resolved' && !complaint.response && !responseText) {
+      showWarning('Please submit a response to the student before resolving the complaint.');
       return;
     }
+
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3005/api/academic/${complaintId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: JSON.stringify({ status: newStatus, version: complaint?.version ?? 0 })
+      const res = await API.put(`/api/academic/${complaint.id}/status`, {
+        status: newStatus,
+        version: complaint.version ?? 0
       });
 
-      if (res.status === 409) {
-        alert('This complaint was updated by someone else. Please refresh and try again.');
-        const refreshed = await fetch(`http://localhost:3005/api/academic?status=${filter}`, {
-          headers: { 'Authorization': token ? `Bearer ${token}` : '', 'Content-Type': 'application/json' }
-        });
-        const data = await refreshed.json();
-        setComplaints(data);
-        return;
-      }
-
-      setComplaints(prev => prev.map(c => c.id === complaintId ? { ...c, status: newStatus } : c));
-    } catch (error) {
-      console.error("Error updating status:", error);
-    }
-  };
-
-  const handleResponseSubmit = async (complaintId) => {
-    const responseText = responses[complaintId];
-    const complaint = complaints.find(c => c.id === complaintId);
-    if (!responseText || !responseText.trim()) {
-      alert("Response cannot be empty.");
-      return;
-    }
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:3005/api/academic/${complaintId}/response`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: JSON.stringify({ response: responseText, resolvedBy: 'Admin', version: complaint?.version ?? 0 })
-      });
-      if (res.ok) {
-  document.getElementById(`response-${complaintId}`).close();
-  setComplaints(prev =>
-    prev.map(c =>
-      c.id === complaintId ? { ...c, response: responseText, status: 'resolved' } : c
-    )
-  );
-  setTimeout(() => {
-    alert("Response submitted successfully");
-  }, 100);
-}
+      showSuccess(`Complaint #${complaint.id} status updated to ${newStatus.replace('_', ' ')}.`);
+      fetchComplaints();
     } catch (err) {
-      console.error("Error submitting response:", err);
-      alert("Failed to submit response");
+      if (err.response?.status === 409) {
+        showError('Concurrency Conflict: This complaint was updated by another admin. Refreshing latest data...');
+        fetchComplaints();
+      } else {
+        showError(err.response?.data?.error || 'Failed to update complaint status.');
+      }
     }
   };
 
-  const filteredComplaints = complaints.filter(complaint => 
-    (complaint.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (complaint.course || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const handleResponseSubmit = async (e) => {
+    e?.preventDefault();
+    if (!activeComplaint || !responseText.trim()) {
+      showError('Response cannot be empty.');
+      return;
+    }
+
+    setIsSubmittingResponse(true);
+
+    try {
+      const res = await API.post(`/api/academic/${activeComplaint.id}/response`, {
+        response: responseText.trim(),
+        resolvedBy: 'Academic Admin',
+        version: activeComplaint.version ?? 0
+      });
+
+      showSuccess(`Response saved and ticket #${activeComplaint.id} marked as resolved!`);
+      setActiveComplaint(null);
+      setResponseText('');
+      fetchComplaints();
+    } catch (err) {
+      if (err.response?.status === 409) {
+        showError('Concurrency Conflict: Someone else updated this complaint. Refreshing...');
+        setActiveComplaint(null);
+        fetchComplaints();
+      } else {
+        showError(err.response?.data?.error || 'Failed to submit response.');
+      }
+    } finally {
+      setIsSubmittingResponse(false);
+    }
+  };
+
+  const filteredComplaints = complaints.filter(
+    (c) =>
+      (c.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.course || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(c.id).includes(searchTerm)
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white via-gray-400 to-blue-600 p-6">
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex items-center space-x-4">
-        <button
-        onClick={() => window.history.back()}
-        className="text-blue-700 hover:text-blue-500 font-small"
-      >
-        ← 
-      </button>
-        <h2 className="text-4xl font-bold text-blue-900">ACADEMICS-COMPLAINTS</h2>
-        </div>
-        <div className="flex space-x-5">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by complaint or course..."
-              className="pl-10 pr-4 py-2 border rounded-lg"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <FaSearch className="absolute left-3 top-3 text-gray-400" />
+    <AppShell>
+      <div className="space-y-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-3">
+              <span className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <FaBook size={20} />
+              </span>
+              Academics Department Workstation
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Manage course, exam, and grading grievances submitted by students.
+            </p>
           </div>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="border rounded-lg px-4 py-2"
-          >
-            <option value="pending">Pending</option>
-            <option value="under_review">Reviewing</option>
-            <option value="resolved">Resolved</option>
-            {/*<option value="All"><All></option>*/}
-          </select>
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={fetchComplaints} icon={FaSync}>
+              Refresh Queue
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/admin/home')}>
+              Admin Hub
+            </Button>
+          </div>
         </div>
-      </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-s font-medium text-blue-800 uppercase tracking-wider">
-                Complaint Details
-              </th>
-              <th className="px-6 py-3 text-left text-s font-medium text-blue-800 uppercase tracking-wider">
-                Course/Type
-              </th>
-              <th className="px-6 py-3 text-left text-s font-medium text-blue-800 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-s font-medium text-blue-800 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredComplaints.map((complaint) => (
-              <tr key={complaint.id}>
-                <td className="px-6 py-4">
-                  <div className="text-sm font-medium text-gray-900">
-                    {complaint.description?.substring(0, 100) || 'No description'}
-                    {complaint.description?.length > 100 && '...'}
-                  </div>
-                  {!complaint.is_anonymous && (
-                    <div className="text-sm text-gray-500 flex items-center mt-1">
-                      <FaUserGraduate className="mr-1" /> {complaint.user_id || 'N/A'}
-                    </div>
-                  )}
-                  {complaint.response && (
-                    <div className="text-sm text-blue-600 mt-1">
-                      Admin Response: {complaint.response}
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <div className="text-sm text-gray-900">{complaint.course || 'N/A'}</div>
-                  <div className="text-xs text-gray-500">{complaint.complaint_type || 'N/A'}</div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    complaint.status === 'pending'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : complaint.status === 'under_review'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-green-100 text-green-800'
-                  }`}>
-                    {complaint.status.replace('_', ' ')}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <button
-                    onClick={() => document.getElementById(`response-${complaint.id}`).showModal()}
-                    className="text-blue-600 hover:text-blue-900 text-sm"
-                  >
-                    <FaReply className="inline mr-1" /> Respond
-                  </button>
-                  <button
-                    onClick={() => handleStatusUpdate(complaint.id, 
-                      complaint.status === 'pending' ? 'under_review' : 'resolved')}
-                    className="text-green-600 hover:text-green-900 text-sm"
-                  >
-                    <FaCheckCircle className="inline mr-1" /> 
-                    {complaint.status === 'pending' ? 'Start Review' : 'Resolve'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Response Dialogs */}
-      {filteredComplaints.map((complaint) => (
-        <dialog key={complaint.id} id={`response-${complaint.id}`} className="modal">
-          <div className="modal-box my-4 padding-6">
-            <h2 className="font-bold text-lg">Respond to Complaint</h2>
-            <div className="py-4 space-y-2">
-              <p><strong>Course:</strong> {complaint.course}</p>
-              <p><strong>Type:</strong> {complaint.complaint_type}</p>
-              <p className="mt-2">{complaint.description}</p>
-            </div>
-            <textarea
-              className="w-full p-2 border rounded-lg mt-2"
-              rows="4"
-              placeholder="Enter your response to the student..."
-              value={responses[complaint.id] || ''}
-              onChange={(e) => setResponses({ ...responses, [complaint.id]: e.target.value })}
-            ></textarea>
-            <div className="modal-action">
-              <form method="dialog">
-                <button className="btn mr-20">Cancel</button>
+        {/* Filter Tabs & Search Bar */}
+        <Card className="p-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {/* Status Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
+              {['pending', 'in_review', 'resolved', 'all'].map((tab) => (
                 <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => handleResponseSubmit(complaint.id)}
+                  key={tab}
+                  onClick={() => setFilter(tab)}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition ${
+                    filter === tab
+                      ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/80'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
                 >
-                  Send Response
+                  {tab.replace('_', ' ')}
                 </button>
-              </form>
+              ))}
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full md:w-72">
+              <input
+                type="text"
+                placeholder="Search ticket #, course, or keyword..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+              />
+              <FaSearch className="absolute left-3 top-2.5 text-slate-400 text-xs" />
             </div>
           </div>
-        </dialog>
-      ))}
-    </div>
+        </Card>
+
+        {/* Main Complaint Table */}
+        {isLoading ? (
+          <TableSkeleton rows={5} cols={5} />
+        ) : filteredComplaints.length > 0 ? (
+          <Card className="shadow-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs divide-y divide-slate-100">
+                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-3.5">Ticket</th>
+                    <th className="px-6 py-3.5">Description & Student</th>
+                    <th className="px-6 py-3.5">Course / Type</th>
+                    <th className="px-6 py-3.5">Status</th>
+                    <th className="px-6 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {filteredComplaints.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                      <td className="px-6 py-4 font-mono font-bold text-indigo-600">#{item.id}</td>
+                      <td className="px-6 py-4 max-w-md">
+                        <p className="font-semibold text-slate-900 truncate">{item.description}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {item.is_anonymous ? (
+                            <span className="text-amber-600 font-semibold">Anonymous Student</span>
+                          ) : (
+                            <span>Student: {item.user_name || item.email || `ID ${item.user_id}`}</span>
+                          )}
+                        </p>
+                        {item.response && (
+                          <div className="mt-1.5 p-2 bg-emerald-50 text-emerald-800 rounded-lg text-[11px] border border-emerald-100">
+                            <strong>Admin Response:</strong> {item.response}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-slate-800">{item.course || 'N/A'}</div>
+                        <div className="text-[11px] text-slate-400">{item.complaint_type || 'Academic Issue'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge status={item.status} />
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                        {item.status === 'pending' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleStatusUpdate(item, 'in_review')}
+                          >
+                            Start Review
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => {
+                            setActiveComplaint(item);
+                            setResponseText(item.response || '');
+                          }}
+                          icon={FaReply}
+                        >
+                          Respond
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        ) : (
+          <EmptyState
+            title="Queue Empty"
+            description={`No academic complaints found matching '${filter.replace('_', ' ')}' status.`}
+          />
+        )}
+      </div>
+
+      {/* Response Modal */}
+      <Modal
+        isOpen={Boolean(activeComplaint)}
+        onClose={() => setActiveComplaint(null)}
+        title={`Respond & Resolve Ticket #${activeComplaint?.id}`}
+      >
+        {activeComplaint && (
+          <form onSubmit={handleResponseSubmit} className="space-y-4">
+            <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1 border border-slate-200">
+              <p><strong>Course:</strong> {activeComplaint.course || 'N/A'}</p>
+              <p><strong>Description:</strong> {activeComplaint.description}</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Administrator Response <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={5}
+                required
+                placeholder="Enter official academic response to student..."
+                value={responseText}
+                onChange={(e) => setResponseText(e.target.value)}
+                className="w-full p-3 bg-white border border-slate-300 rounded-xl text-xs focus:ring-4 focus:ring-indigo-200"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" size="sm" onClick={() => setActiveComplaint(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="success"
+                size="sm"
+                isLoading={isSubmittingResponse}
+                icon={FaCheckCircle}
+              >
+                Send Response & Resolve
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+    </AppShell>
   );
 };
 

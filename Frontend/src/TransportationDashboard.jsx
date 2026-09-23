@@ -1,236 +1,215 @@
 import React, { useState, useEffect } from 'react';
-import { FaSearch, FaReply, FaCheckCircle, FaBus, FaRoute } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
+import { FaSearch, FaReply, FaCheckCircle, FaBus, FaSync } from 'react-icons/fa';
+import { io } from 'socket.io-client';
+import AppShell from './components/layout/AppShell';
+import Card from './components/ui/Card';
+import Button from './components/ui/Button';
+import Badge from './components/ui/Badge';
+import Modal from './components/ui/Modal';
+import EmptyState from './components/ui/EmptyState';
+import { TableSkeleton } from './components/ui/LoadingState';
+import { useToast } from './components/ui/Toast';
+import API from './api';
 
 const TransportationDashboard = () => {
+  const navigate = useNavigate();
+  const { showSuccess, showError, showInfo } = useToast();
+
   const [complaints, setComplaints] = useState([]);
   const [filter, setFilter] = useState('pending');
   const [searchTerm, setSearchTerm] = useState('');
-  const [responses, setResponses] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [activeComplaint, setActiveComplaint] = useState(null);
+  const [responseText, setResponseText] = useState('');
+  const [isSubmittingResponse, setIsSubmittingResponse] = useState(false);
+
+  const fetchComplaints = async () => {
+    try {
+      setIsLoading(true);
+      const res = await API.get(`/api/transportation?status=${filter}`);
+      setComplaints(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Error fetching transport complaints:', err);
+      showError('Failed to fetch transport complaints.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchComplaints = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`http://localhost:3005/api/transportation?status=${filter}`, {
-          headers: {
-            'Authorization': token ? `Bearer ${token}` : '',
-            'Content-Type': 'application/json'
-          }
-        });
-        const data = await response.json();
-        setComplaints(data);
-      } catch (error) {
-        console.error("Error fetching complaints:", error);
-      }
-    };
     fetchComplaints();
   }, [filter]);
 
-  const handleStatusUpdate = async (complaintId, newStatus) => {
-    const hasResponse = responses[complaintId] || complaints.find(c => c.id === complaintId)?.response;
-    const complaint = complaints.find(c => c.id === complaintId);
-    if (newStatus === 'resolved' && !hasResponse) {
-      alert("Please respond before resolving the complaint.");
-      return;
-    }
-    try {
-      const token = localStorage.getItem('token');
-      await fetch(`http://localhost:3005/api/transportation/${complaintId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: JSON.stringify({ status: newStatus, version: complaint?.version ?? 0 })
-      });
-      setComplaints(prev => prev.map(c => c.id === complaintId ? { ...c, status: newStatus } : c));
-    } catch (error) {
-      console.error("Error updating status:", error);
-    }
-  };
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const socket = io('http://localhost:3005', { auth: { token } });
+    socket.on('complaintUpdated', (payload) => {
+      setComplaints((prev) =>
+        prev.map((c) => (c.id === payload.id ? { ...c, status: payload.status, version: payload.version } : c))
+      );
+      showInfo(`Ticket #${payload.id} updated.`);
+    });
+    return () => socket.disconnect();
+  }, [showInfo]);
 
-  const handleResponseSubmit = async (complaintId) => {
-    const responseText = responses[complaintId];
-    if (!responseText || !responseText.trim()) {
-      alert("Response cannot be empty.");
-      return;
-    }
+  const handleStatusUpdate = async (complaint, newStatus) => {
     try {
-      const token = localStorage.getItem('token');
-      const complaint = complaints.find(c => c.id === complaintId);
-      const res = await fetch(`http://localhost:3005/api/transportation/${complaintId}/response`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: JSON.stringify({ response: responseText, resolvedBy: 'Transport Admin', version: complaint?.version ?? 0 })
+      await API.put(`/api/transportation/${complaint.id}/status`, {
+        status: newStatus,
+        version: complaint.version ?? 0
       });
-      if (res.ok) {
-        alert("Response submitted successfully");
-        document.getElementById(`response-${complaintId}`).close();
-        setComplaints(prev =>
-          prev.map(c => c.id === complaintId ? { ...c, response: responseText, status: 'resolved' } : c)
-        );
-      }
+      showSuccess(`Status updated to ${newStatus.replace('_', ' ')}.`);
+      fetchComplaints();
     } catch (err) {
-      console.error("Error submitting response:", err);
-      alert("Failed to submit response");
+      showError('Failed to update status.');
     }
   };
 
-  const filteredComplaints = complaints.filter(complaint =>
-    (complaint.text || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (complaint.vehicleNumber || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const handleResponseSubmit = async (e) => {
+    e?.preventDefault();
+    if (!activeComplaint || !responseText.trim()) return;
+
+    setIsSubmittingResponse(true);
+    try {
+      await API.post(`/api/transportation/${activeComplaint.id}/response`, {
+        response: responseText.trim(),
+        resolvedBy: 'Transport Manager',
+        version: activeComplaint.version ?? 0
+      });
+      showSuccess(`Response submitted for Ticket #${activeComplaint.id}!`);
+      setActiveComplaint(null);
+      setResponseText('');
+      fetchComplaints();
+    } catch (err) {
+      showError('Failed to submit response.');
+    } finally {
+      setIsSubmittingResponse(false);
+    }
+  };
+
+  const filteredComplaints = complaints.filter((c) =>
+    (c.description || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white via-gray-400 to-blue-600 p-6">
-      <div className="flex justify-between items-center mb-8">
-        <div className="flex items-center space-x-4">
-        <button
-        onClick={() => window.history.back()}
-        className="text-blue-700 hover:text-blue-500 font-small"
-      >
-        ← 
-      </button>
-        <h2 className="text-4xl font-bold text-blue-900">TRANSPORTATION-COMPLAINTS</h2>
-        </div>
-        <div className="flex space-x-5">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by route, vehicle, or complaint..."
-              className="pl-10 pr-4 py-2 border rounded-lg"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <FaSearch className="absolute left-3 top-3 text-gray-400" />
+    <AppShell>
+      <div className="space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-3">
+              <span className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <FaBus size={20} />
+              </span>
+              Transport Manager Workstation
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">Review campus bus, driver, and scheduling tickets.</p>
           </div>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="border rounded-lg px-4 py-2"
-          >
-            <option value="pending">Pending</option>
-            <option value="resolved">Resolved</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={fetchComplaints} icon={FaSync}>Refresh</Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/admin/home')}>Admin Hub</Button>
+          </div>
         </div>
-      </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-s font-medium text-blue-800 uppercase tracking-wider">
-                Complaint Details
-              </th>
-              <th className="px-6 py-3 text-left text-s font-medium text-blue-800 uppercase tracking-wider">
-                Route/Vehicle
-              </th>
-              <th className="px-6 py-3 text-left text-s font-medium text-blue-800 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-s font-medium text-blue-800 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredComplaints.map((complaint) => (
-              <tr key={complaint.id}>
-                <td className="px-6 py-4">
-                  <div className="text-sm font-medium text-gray-900">
-                    {complaint.text?.substring(0, 80)}{complaint.text?.length > 80 && '...'}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(complaint.created_at).toLocaleString()}
-                  </div>
-                  {complaint.response && (
-                    <div className="text-sm text-blue-600 mt-1">
-                      Admin Response: {complaint.response}
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center">
-                    <FaRoute className="mr-2 text-gray-400" />
-                    <div>
-                      <div className="text-sm font-medium">Route: {complaint.routeNumber || 'N/A'}</div>
-                      {complaint.vehicleNumber && (
-                        <div className="text-xs text-gray-500">Vehicle: {complaint.vehicleNumber}</div>
-                      )}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    complaint.status === 'pending'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : complaint.status === 'acknowledged'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-green-100 text-green-800'
-                  }`}>
-                    {complaint.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 space-x-2">
-                  <button
-                    onClick={() => document.getElementById(`response-${complaint.id}`).showModal()}
-                    className="text-blue-600 hover:text-blue-900 text-sm"
-                  >
-                    <FaReply className="inline mr-1" /> Respond
-                  </button>
-                  <button
-                    onClick={() => handleStatusUpdate(complaint.id, 
-                      complaint.status === 'pending' ? 'acknowledged' : 'resolved')}
-                    className="text-green-600 hover:text-green-900 text-sm"
-                  >
-                    <FaCheckCircle className="inline mr-1" /> 
-                    {complaint.status === 'pending' ? 'Acknowledge' : 'Resolve'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Response Dialogs */}
-      {filteredComplaints.map((complaint) => (
-        <dialog key={`dialog-${complaint.id}`} id={`response-${complaint.id}`} className="modal">
-          <div className="modal-box my-4 padding-6">
-            <h3 className="font-bold text-lg">Transport Complaint Response</h3>
-            <div className="py-4 space-y-2">
-              <p><strong>Route:</strong> {complaint.routeNumber || 'N/A'}</p>
-              {complaint.vehicleNumber && (
-                <p><strong>Vehicle:</strong> {complaint.vehicleNumber}</p>
-              )}
-              <p className="mt-2">{complaint.text}</p>
+        <Card className="p-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
+              {['pending', 'in_review', 'resolved', 'all'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setFilter(tab)}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition ${
+                    filter === tab ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:bg-slate-200/50'
+                  }`}
+                >
+                  {tab.replace('_', ' ')}
+                </button>
+              ))}
             </div>
+            <div className="relative w-full md:w-72">
+              <input
+                type="text"
+                placeholder="Search ticket..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+              />
+              <FaSearch className="absolute left-3 top-2.5 text-slate-400 text-xs" />
+            </div>
+          </div>
+        </Card>
+
+        {isLoading ? (
+          <TableSkeleton rows={5} cols={5} />
+        ) : filteredComplaints.length > 0 ? (
+          <Card className="shadow-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs divide-y divide-slate-100">
+                <thead className="bg-slate-50 text-slate-500 font-bold uppercase">
+                  <tr>
+                    <th className="px-6 py-3.5">Ticket</th>
+                    <th className="px-6 py-3.5">Description</th>
+                    <th className="px-6 py-3.5">Status</th>
+                    <th className="px-6 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {filteredComplaints.map((item) => (
+                    <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                      <td className="px-6 py-4 font-mono font-bold text-indigo-600">#{item.id}</td>
+                      <td className="px-6 py-4 max-w-md">
+                        <p className="font-semibold text-slate-900 truncate">{item.description}</p>
+                        {item.response && (
+                          <div className="mt-1.5 p-2 bg-emerald-50 text-emerald-800 rounded-lg text-[11px]">
+                            <strong>Manager Response:</strong> {item.response}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4"><Badge status={item.status} /></td>
+                      <td className="px-6 py-4 text-right space-x-2">
+                        {item.status === 'pending' && (
+                          <Button size="sm" variant="secondary" onClick={() => handleStatusUpdate(item, 'in_review')}>
+                            Review
+                          </Button>
+                        )}
+                        <Button size="sm" variant="primary" onClick={() => { setActiveComplaint(item); setResponseText(item.response || ''); }} icon={FaReply}>
+                          Respond
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        ) : (
+          <EmptyState title="No Transport Tickets" description="Queue is empty for this criteria." />
+        )}
+      </div>
+
+      <Modal isOpen={Boolean(activeComplaint)} onClose={() => setActiveComplaint(null)} title={`Respond Ticket #${activeComplaint?.id}`}>
+        {activeComplaint && (
+          <form onSubmit={handleResponseSubmit} className="space-y-4">
+            <p className="text-xs text-slate-700 p-3 bg-slate-50 rounded-xl">{activeComplaint.description}</p>
             <textarea
-              className="w-full p-2 border rounded-lg mt-2"
-              rows="4"
-              placeholder="Enter your response or action taken..."
-              value={responses[complaint.id] || ''}
-              onChange={(e) => setResponses({ ...responses, [complaint.id]: e.target.value })}
-            ></textarea>
-            <div className="modal-action">
-              <button className="btn mr-14" onClick={() => document.getElementById(`response-${complaint.id}`).close()}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => handleResponseSubmit(complaint.id)}
-              >
-                Send Response
-              </button>
+              rows={4}
+              required
+              placeholder="Enter transport manager response..."
+              value={responseText}
+              onChange={(e) => setResponseText(e.target.value)}
+              className="w-full p-3 border rounded-xl text-xs"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setActiveComplaint(null)}>Cancel</Button>
+              <Button type="submit" variant="success" size="sm" isLoading={isSubmittingResponse} icon={FaCheckCircle}>
+                Resolve & Send
+              </Button>
             </div>
-          </div>
-        </dialog>
-      ))}
-    </div>
+          </form>
+        )}
+      </Modal>
+    </AppShell>
   );
 };
 

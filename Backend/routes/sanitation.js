@@ -1,114 +1,121 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../models/db');
+const { authorizeRoles } = require('../middleware/authMiddleware');
+const complaintService = require('../utils/complaintService');
 
-// POST: Submit sanitation complaint
-router.post('/submit', (req, res) => {
-  const { text, isAnonymous, location, issueType, urgency, userId } = req.body;
+// POST - Submit Sanitation Complaint
+router.post('/submit', authorizeRoles('student', 'admin', 'principal'), async (req, res) => {
+  try {
+    const { text, description, isAnonymous, location, issueType, urgency } = req.body;
+    const desc = text || description;
+    const userId = isAnonymous ? null : (req.user?.id || req.body.userId);
 
-  if (!text || !location || !issueType || !urgency) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
-  const query = `
-    INSERT INTO sanitation_complaints (text, isAnonymous, location, issueType, urgency, status)
-    VALUES (?, ?, ?, ?, ?, 'pending')
-  `;
-
-  db.query(
-    query,
-    [text, isAnonymous, location, issueType, urgency],
-    (err, result) => {
-      if (err) {
-        console.error('DB Insert error:', err);
-        return res.status(500).json({ error: 'Failed to submit complaint' });
-      }
-      res.status(200).json({ message: 'Sanitation complaint submitted successfully' });
+    if (!desc || !location || !issueType || !urgency) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
-  );
+
+    const result = await complaintService.createComplaintRecord({
+      userId,
+      departmentName: 'Sanitation',
+      description: desc,
+      isAnonymous,
+      details: { location, issueType, urgency }
+    });
+
+    res.status(200).json({
+      message: 'Sanitation complaint submitted successfully',
+      trackingToken: result.trackingToken
+    });
+  } catch (err) {
+    console.error('DB Insert error:', err);
+    res.status(500).json({ error: 'Failed to submit complaint' });
+  }
 });
 
-// GET: Fetch all or filtered by status
-router.get('/', (req, res) => {
-  const { status } = req.query;
+// GET - List Sanitation Complaints
+router.get('/', authorizeRoles('admin', 'principal', 'student'), async (req, res) => {
+  try {
+    const { status, page, limit } = req.query;
+    const isStudent = req.user?.role === 'student';
 
-  let query = `SELECT * FROM sanitation_complaints`;
-  const params = [];
+    const result = await complaintService.getComplaintsPaginated({
+      departmentName: 'Sanitation',
+      status,
+      page,
+      limit,
+      isStudentHistory: isStudent,
+      userId: req.user?.id
+    });
 
-  if (status && status !== 'all') {
-    query += ` WHERE status = ?`;
-    params.push(status);
+    res.json(result.data.map(item => ({
+      ...item,
+      text: item.description,
+      resolvedBy: item.resolved_by,
+      date: item.created_at
+    })));
+  } catch (err) {
+    console.error('DB Fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch complaints' });
   }
-
-  query += ` ORDER BY date DESC`;
-
-  db.query(query, params, (err, results) => {
-    if (err) {
-      console.error('DB Fetch error:', err);
-      return res.status(500).json({ error: 'Failed to fetch complaints' });
-    }
-    res.json(results);
-  });
 });
 
-// PUT: Update complaint status
-router.put('/:id/status', (req, res) => {
-  const { id } = req.params;
-  const { status, version } = req.body;
+// PUT - Update status
+router.put('/:id/status', authorizeRoles('admin', 'principal'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, version } = req.body;
 
-  if (version === undefined || version === null) {
-    return res.status(400).json({ error: 'Version is required' });
-  }
-
-  db.query(
-    `UPDATE sanitation_complaints SET status = ?, version = version + 1 WHERE id = ? AND version = ?`,
-    [status, id, Number(version)],
-    (err, result) => {
-      if (err) {
-        console.error('Status update error:', err);
-        return res.status(500).json({ error: 'Failed to update status' });
-      }
-
-      if (result.affectedRows === 0) {
-        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
-      }
-
-      global.io?.emit('complaintUpdated', { id: Number(id), status, department: 'sanitation' });
-      res.json({ message: 'Status updated', version: Number(version) + 1 });
+    if (version === undefined || version === null) {
+      return res.status(400).json({ error: 'Version is required' });
     }
-  );
+
+    const result = await complaintService.updateComplaintStatusOptimistic({
+      complaintId: id,
+      newStatus: status,
+      changedBy: req.user?.role === 'principal' ? 'Principal' : 'Admin',
+      expectedVersion: version
+    });
+
+    res.json({ message: 'Status updated', version: result.version });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ message: err.message });
+    }
+    res.status(500).json({ error: 'Failed to update status' });
+  }
 });
 
-// POST: Save response (in `resolvedBy`)
-router.post('/:id/response', (req, res) => {
-  const { id } = req.params;
-  const { response, version } = req.body;
+// POST - Save Response
+router.post('/:id/response', authorizeRoles('admin', 'principal'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { response, version } = req.body;
 
-  if (!response) {
-    return res.status(400).json({ error: 'Response required' });
-  }
-
-  if (version === undefined || version === null) {
-    return res.status(400).json({ error: 'Version is required' });
-  }
-
-  db.query(
-    `UPDATE sanitation_complaints SET resolvedBy = ?, status = 'resolved', version = version + 1 WHERE id = ? AND version = ?`,
-    [response, id, Number(version)],
-    (err, result) => {
-      if (err) {
-        console.error('Response save error:', err);
-        return res.status(500).json({ error: 'Failed to save response' });
-      }
-
-      if (result.affectedRows === 0) {
-        return res.status(409).json({ message: 'This complaint was updated by someone else. Please refresh and try again.' });
-      }
-
-      global.io?.emit('complaintUpdated', { id: Number(id), status: 'resolved', department: 'sanitation' });
-      res.json({ message: 'Response saved and complaint marked as resolved', version: Number(version) + 1 });
+    if (!response || !response.trim()) {
+      return res.status(400).json({ error: 'Response required' });
     }
-  );
+    if (version === undefined || version === null) {
+      return res.status(400).json({ error: 'Version is required' });
+    }
+
+    const resolver = req.user?.role === 'principal' ? 'Principal' : 'Admin';
+
+    const result = await complaintService.updateComplaintStatusOptimistic({
+      complaintId: id,
+      newStatus: 'resolved',
+      responseText: response,
+      changedBy: resolver,
+      expectedVersion: version
+    });
+
+    res.json({ message: 'Response saved and complaint marked as resolved', version: result.version });
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ message: err.message });
+    }
+    res.status(500).json({ error: 'Failed to save response' });
+  }
 });
 
 module.exports = router;

@@ -1,221 +1,211 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FaPizzaSlice, FaHistory, FaLock } from 'react-icons/fa';
+import AppShell from './components/layout/AppShell';
+import Card, { CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/Card';
+import Button from './components/ui/Button';
+import Badge from './components/ui/Badge';
+import Modal from './components/ui/Modal';
+import EmptyState from './components/ui/EmptyState';
+import { useToast } from './components/ui/Toast';
 import API from './api';
-import { FaArrowLeft, FaUtensils, FaLock, FaHistory, FaRegClock } from 'react-icons/fa';
 
 const FoodComplaint = () => {
   const navigate = useNavigate();
+  const { showSuccess, showError, showInfo } = useToast();
+
+  const [description, setDescription] = useState('');
   const [campus, setCampus] = useState('');
   const [issueType, setIssueType] = useState('');
-  const [complaintText, setComplaintText] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
-  const [complaintHistory, setComplaintHistory] = useState([]);
+  const [history, setHistory] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [generatedToken, setGeneratedToken] = useState(null);
 
-  const fetchComplaintHistory = async () => {
+  const fetchHistory = async () => {
     try {
-      const response = await API.get("/api/food?status=all");
-      setComplaintHistory(response.data);
-    } catch (error) {
-      console.error("Error fetching food complaints:", error);
+      const res = await API.get('/api/food/history');
+      setHistory(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Error fetching food history:', err);
     }
   };
 
   useEffect(() => {
-    fetchComplaintHistory();
+    fetchHistory();
   }, []);
 
-  const handleSubmit = async () => {
-    if (!complaintText.trim() || !campus || !issueType) {
-      alert("Please fill in all fields.");
-      return;
-    }
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert("You must be logged in to submit a complaint. Redirecting to login...");
-      navigate('/');
+  const handleSubmit = async (e) => {
+    e?.preventDefault();
+    if (!description || !description.trim()) {
+      showError('Please enter a description for your food complaint.');
       return;
     }
 
     setIsSubmitting(true);
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const userId = isAnonymous ? null : user?.id;
-
     try {
-      const response = await API.post('/api/food/submit', {
-        text: complaintText,
-        isAnonymous,
-        userId,
+      const res = await API.post('/api/food/submit', {
+        description: description.trim(),
         campus,
-        issueType
+        issueType,
+        isAnonymous
       });
 
-      if (response.status === 200) {
-        setComplaintText('');
+      if (res.status === 200) {
+        if (isAnonymous && res.data?.trackingToken) {
+          setGeneratedToken(res.data.trackingToken);
+        } else {
+          showSuccess('Food complaint submitted successfully!');
+        }
+        setDescription('');
         setCampus('');
         setIssueType('');
         setIsAnonymous(false);
-
-        await fetchComplaintHistory();
-
-        setTimeout(() => {
-          alert(`Complaint submitted ${isAnonymous ? 'anonymously' : 'successfully'}`);
-        }, 200);
-      } else {
-        alert("Failed to submit complaint.");
+        await fetchHistory();
       }
     } catch (err) {
-      console.error("Submission error:", err);
-      if (err.response?.status === 401) {
-        alert("Session expired. Please log in again.");
-        navigate('/');
-      } else {
-        alert("Submission failed.");
-      }
+      showError(err.response?.data?.error || 'Failed to submit food complaint.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-400 via-blue-300 to-black p-6">      
-      <header className="flex justify-between items-center p-6 shadow-sm">
-        <button onClick={() => navigate(-1)} className="text-gray-700 hover:text-gray-900">
-          <FaArrowLeft size={20} />
-        </button>
-        <h1 className="text-4xl font-bold text-gray-800 flex items-center">
-          <FaUtensils className="mr-2" /> FOOD COMPLAINT PORTAL
-        </h1>
-        <div className="w-6"></div>
-      </header>
-
-      <hr className="border-gray-200" />
-
-      <main className="p-6 max-w-3xl mx-auto">
-        <div className="bg-gray-50 rounded-lg p-6 shadow-sm border border-gray-200 mb-6">
-          <h2 className="text-lg font-medium text-gray-700 mb-4 flex items-center">
-            <FaLock className="mr-2" /> NEW COMPLAINT
-          </h2>
-
-          <select
-            value={campus}
-            onChange={(e) => setCampus(e.target.value)}
-            className="w-full mb-4 p-3 border rounded-lg"
-          >
-            <option value="">Select campus/section</option>
-            <option>North Campus Hostel</option>
-            <option>South Campus Hostel</option>
-            <option>North Campus Canteen</option>
-            <option>South Campus Canteen</option>
-          </select>
-
-          <select
-            value={issueType}
-            onChange={(e) => setIssueType(e.target.value)}
-            className="w-full mb-4 p-3 border rounded-lg"
-          >
-            <option value="">Select complaint type</option>
-            <option>Food Quality</option>
-            <option>Quantity</option>
-            <option>Seating Arrangement</option>
-            <option>Cleanliness</option>
-          </select>
-
-          <textarea
-            className="w-full p-4 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-200"
-            rows="5"
-            placeholder="Describe your food-related complaint..."
-            value={complaintText}
-            onChange={(e) => setComplaintText(e.target.value)}
-          ></textarea>
-
-          <div className="flex items-center mb-6">
-            <input
-              type="checkbox"
-              id="anonymous"
-              checked={isAnonymous}
-              onChange={() => setIsAnonymous(!isAnonymous)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="anonymous" className="ml-2 text-gray-700">
-              Submit anonymously
-              <span className="text-sm text-gray-500 ml-1">(visible only to cafeteria staff)</span>
-            </label>
+    <AppShell>
+      <div className="space-y-8 max-w-4xl mx-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-3">
+              <span className="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center">
+                <FaPizzaSlice size={20} />
+              </span>
+              Food & Catering Portal
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Report hygiene, quality, or service issues regarding campus mess and canteens.
+            </p>
           </div>
-
-          <button
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            className={`w-full py-3 px-4 rounded-lg font-medium transition-colors shadow-sm ${
-              isSubmitting
-                ? 'bg-blue-400 cursor-not-allowed'
-                : 'bg-blue-800 hover:bg-blue-600 text-white'
-            }`}
-          >
-            {isSubmitting ? 'Submitting...' : 'SUBMIT COMPLAINT'}
-            {isAnonymous && (
-              <span className="text-blue-100 text-sm ml-2">(Anonymous)</span>
-            )}
-          </button>
+          <Button variant="outline" size="sm" onClick={() => navigate(-1)}>Back</Button>
         </div>
 
-        <hr className="separator-line border-gray-200 my-4" />
+        <Card className="shadow-lg">
+          <CardHeader className="bg-slate-50/50">
+            <CardTitle>File Food Quality Complaint</CardTitle>
+            <CardDescription>Provide details for mess committee review</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-700 mb-1.5">
+                  Complaint Description <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Describe food quality or hygiene issue..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm focus:ring-4 focus:ring-indigo-200"
+                />
+              </div>
 
-        <div className="relative my-2 flex justify-center">
-          <span className="px-4 bg-off-white text-gray-600">Complaint History (View Only)</span>
-        </div>
-
-        <hr className="separator-line border-gray-200 my-4" />
-
-        <div className="bg-gray-150 rounded-lg p-6 shadow-sm border border-gray-200">
-          <div className="flex items-center text-gray-700 mb-4">
-            <FaHistory className="mr-2" />
-            <h3 className="font-medium">Archived Complaints</h3>
-          </div>
-
-          {complaintHistory.length > 0 ? (
-            <div className="space-y-4">
-              {complaintHistory.map((complaint) => (
-                <div key={complaint.id} className="p-4 bg-white rounded border border-gray-200">
-                  <p className="text-sm text-gray-600 mb-1"><strong>Campus:</strong> {complaint.campus}</p>
-                  <p className="text-sm text-gray-600 mb-1"><strong>Type:</strong> {complaint.issueType}</p>
-                  <p className="text-gray-800 italic">"{complaint.text}"</p>
-
-                  {complaint.response && (
-                    <div className="text-sm text-blue-600 mt-2">
-                      Admin Response: {complaint.response}
-                    </div>
-                  )}
-
-                  <div className="flex justify-between mt-3 text-sm">
-                    <div className="text-gray-500">
-                      <FaRegClock className="inline mr-1" />
-                      {new Date(complaint.submitted_at).toLocaleDateString()}
-                    </div>
-                    <span className={`px-2 py-1 rounded ${
-                      complaint.status.toLowerCase() === 'resolved'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {complaint.status}
-                    </span>
-                  </div>
-
-                  {!complaint.is_anonymous && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      Submitted by: {complaint.email || 'N/A'}
-                    </div>
-                  )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 mb-1.5">Campus / Canteen</label>
+                  <select
+                    value={campus}
+                    onChange={(e) => setCampus(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm"
+                  >
+                    <option value="">Select Location...</option>
+                    <option value="Main Mess">Main Student Mess</option>
+                    <option value="North Canteen">North Campus Canteen</option>
+                    <option value="Hostel Mess">Hostel Dining</option>
+                  </select>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-center py-4">No previous complaints found</p>
-          )}
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-700 mb-1.5">Issue Type</label>
+                  <select
+                    value={issueType}
+                    onChange={(e) => setIssueType(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm"
+                  >
+                    <option value="">Select Category...</option>
+                    <option value="Hygiene">Hygiene & Cleanliness</option>
+                    <option value="Food Quality">Food Taste & Quality</option>
+                    <option value="Overpricing">Pricing & Billing</option>
+                    <option value="Staff Conduct">Staff Conduct</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="anon-food"
+                  checked={isAnonymous}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 text-indigo-600 rounded"
+                />
+                <label htmlFor="anon-food" className="text-xs font-bold text-slate-900 cursor-pointer flex items-center gap-1.5">
+                  <FaLock className="text-amber-500" /> Submit Anonymously
+                </label>
+              </div>
+
+              <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isSubmitting}>
+                Submit Food Ticket
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><FaHistory /> Food Ticket History</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {history.length > 0 ? (
+              <div className="divide-y divide-slate-100">
+                {history.map((c) => (
+                  <div key={c.id} className="p-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-indigo-600">#{c.id}</span>
+                        <Badge status={c.status} />
+                      </div>
+                      <span className="text-[11px] text-slate-400">{c.created_at ? new Date(c.created_at).toLocaleDateString() : 'N/A'}</span>
+                    </div>
+                    <p className="text-xs text-slate-800 bg-slate-50 p-3 rounded-xl border border-slate-100 italic">"{c.description}"</p>
+                    {c.response && (
+                      <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs mt-2">
+                        <span className="font-bold text-emerald-900 block">Response ({c.resolved_by || 'Mess Admin'}):</span>
+                        <p className="text-emerald-800">{c.response}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8">
+                <EmptyState title="No Food History" description="No food tickets have been submitted." />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Modal isOpen={Boolean(generatedToken)} onClose={() => setGeneratedToken(null)} title="Anonymous Tracking Token">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600">Save this token to track your anonymous complaint status:</p>
+          <div className="p-3 bg-slate-100 rounded-xl font-mono text-xs font-bold select-all">{generatedToken}</div>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" onClick={() => { navigator.clipboard.writeText(generatedToken); showInfo('Token copied!'); }}>Copy Token</Button>
+            <Button size="sm" variant="secondary" onClick={() => setGeneratedToken(null)}>Close</Button>
+          </div>
         </div>
-      </main>
-    </div>
+      </Modal>
+    </AppShell>
   );
 };
 

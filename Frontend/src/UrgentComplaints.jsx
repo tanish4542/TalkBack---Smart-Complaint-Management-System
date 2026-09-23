@@ -1,151 +1,212 @@
 import React, { useState, useEffect } from 'react';
-import { FaReply, FaUserGraduate, FaExclamationTriangle } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
+import { FaExclamationTriangle, FaReply, FaCheckCircle, FaArrowLeft } from 'react-icons/fa';
+import AppShell from './components/layout/AppShell';
+import Card from './components/ui/Card';
+import Button from './components/ui/Button';
+import Badge from './components/ui/Badge';
+import Modal from './components/ui/Modal';
+import EmptyState from './components/ui/EmptyState';
+import { TableSkeleton } from './components/ui/LoadingState';
+import { useToast } from './components/ui/Toast';
 import API from './api';
 
 const UrgentComplaints = () => {
-  const [complaints, setComplaints] = useState([]);
-  const [responses, setResponses] = useState({});
+  const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
-  const fetchUrgentComplaints = async () => {
+  const [complaints, setComplaints] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [activeComplaint, setActiveComplaint] = useState(null);
+  const [responseText, setResponseText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchUrgent = async () => {
     try {
-      const response = await API.get('/api/principal/urgent');
-      setComplaints(Array.isArray(response.data) ? response.data : []);
-    } catch (error) {
-      console.error('Error fetching urgent complaints:', error);
-      setComplaints([]);
+      setIsLoading(true);
+      const res = await API.get('/api/principal/urgent');
+      setComplaints(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error('Error fetching urgent complaints:', err);
+      showError('Failed to load urgent complaints.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUrgentComplaints();
+    fetchUrgent();
   }, []);
 
-  const handlePrincipalResponseSubmit = async (complaintId) => {
-    const responseText = responses[complaintId];
-    const complaint = complaints.find(c => c.id === complaintId);
-
-    if (!responseText || !responseText.trim()) {
-      alert('Response cannot be empty.');
-      return;
-    }
-
-    try {
-      const res = await API.post(`/api/${complaintId}/principal-response`, {
-        response: responseText,
-        resolvedBy: "Principal",
-        department: complaint?.department
-      });
-
-      if (res.status === 200) {
-        alert('Principal response submitted');
-        document.getElementById(`dialog-${complaintId}`).close();
-        await fetchUrgentComplaints();
-      }
-    } catch (err) {
-      console.error('Error submitting principal response:', err);
-      alert('Failed to submit response');
-    }
-  };
-
   const calculateDaysPending = (submittedDate) => {
+    if (!submittedDate) return 7;
     const now = new Date();
     const submitted = new Date(submittedDate);
     const diffTime = Math.abs(now - submitted);
-    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+  };
+
+  const handlePrincipalResponseSubmit = async (e) => {
+    e?.preventDefault();
+    if (!activeComplaint || !responseText.trim()) {
+      showError('Response cannot be empty.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await API.post(`/api/${activeComplaint.id}/principal-response`, {
+        response: responseText.trim(),
+        resolvedBy: 'Principal',
+        department: activeComplaint.department
+      });
+
+      if (res.status === 200) {
+        showSuccess('Executive response submitted for urgent ticket!');
+        setActiveComplaint(null);
+        setResponseText('');
+        await fetchUrgent();
+      }
+    } catch (err) {
+      showError(err.response?.data?.error || 'Failed to submit response.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white via-gray-400 to-blue-600 p-6">
-      <div className="flex items-center space-x-4 mb-6">
-        <button onClick={() => window.history.back()} className="text-blue-700 hover:text-blue-500 font-small">
-          ←
-        </button>
-        <FaExclamationTriangle className="text-5xl text-red-500" />
-        <h2 className="text-5xl font-bold text-blue-900">URGENT COMPLAINTS</h2>
-      </div>
-
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-medium text-blue-800 uppercase">Complaint</th>
-              <th className="px-6 py-3 text-left text-sm font-medium text-blue-800 uppercase">Department</th>
-              <th className="px-6 py-3 text-left text-sm font-medium text-blue-800 uppercase">Submitted On</th>
-              <th className="px-6 py-3 text-left text-sm font-medium text-blue-800 uppercase">Pending (Days)</th>
-              <th className="px-6 py-3 text-left text-sm font-medium text-blue-800 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-sm font-medium text-blue-800 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {complaints.length > 0 ? (
-              complaints.map((complaint) => (
-                <tr key={complaint.id}>
-                  <td className="px-6 py-4 max-w-md whitespace-pre-wrap">
-                    <div className="text-sm text-gray-900">
-                      {complaint.text.length > 120 ? complaint.text.slice(0, 120) + '...' : complaint.text}
-                    </div>
-                    
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">{complaint.department}</td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
-                    {new Date(complaint.submitted_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
-                    {calculateDaysPending(complaint.submitted_at)} days
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                      Urgent
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => document.getElementById(`dialog-${complaint.id}`).showModal()}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      <FaReply className="inline mr-1" /> Principal Reply
-                    </button>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="6" className="px-6 py-4 text-center text-gray-500">No urgent complaints found</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Principal Response Dialogs */}
-      {complaints.map((complaint) => (
-        <dialog key={complaint.id} id={`dialog-${complaint.id}`} className="modal">
-          <div className="modal-box my-4 padding-6">
-            <h2 className="font-bold text-lg">Principal Response</h2>
-            <p className="py-4">{complaint.text}</p>
-            <textarea
-              className="w-full p-2 border rounded-lg"
-              rows="4"
-              placeholder="Enter your response..."
-              value={responses[complaint.id] || ''}
-              onChange={(e) => setResponses({ ...responses, [complaint.id]: e.target.value })}
-            ></textarea>
-            <div className="modal-action">
-              <form method="dialog">
-                <button className="btn mr-20">Cancel</button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => handlePrincipalResponseSubmit(complaint.id)}
-                >
-                  Send Response
-                </button>
-              </form>
-            </div>
+    <AppShell>
+      <div className="space-y-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-3">
+              <span className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                <FaExclamationTriangle size={20} />
+              </span>
+              Urgent & Escalated Complaints
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Tickets pending for more than 7 days automatically escalated for Principal intervention.
+            </p>
           </div>
-        </dialog>
-      ))}
-    </div>
+          <Button variant="outline" size="sm" onClick={() => navigate('/principal/home')} icon={FaArrowLeft}>
+            Back
+          </Button>
+        </div>
+
+        {/* Escalation Explanation Banner */}
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 text-xs flex items-start gap-3">
+          <FaExclamationTriangle size={18} className="text-rose-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold block mb-0.5">Automated 7-Day Escalation Trigger Enabled</span>
+            <p>
+              These tickets exceeded the 7-day SLA resolution limit at the department level. Responses submitted here will directly resolve the complaint and notify the student.
+            </p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <TableSkeleton rows={5} cols={6} />
+        ) : complaints.length > 0 ? (
+          <Card className="shadow-lg overflow-hidden border-rose-200/80">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs divide-y divide-slate-100">
+                <thead className="bg-rose-50/50 text-rose-950 font-bold uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-3.5">Ticket</th>
+                    <th className="px-6 py-3.5">Department</th>
+                    <th className="px-6 py-3.5">Description</th>
+                    <th className="px-6 py-3.5">Pending SLA</th>
+                    <th className="px-6 py-3.5">Status</th>
+                    <th className="px-6 py-3.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {complaints.map((item) => (
+                    <tr key={item.id} className="hover:bg-rose-50/30 transition">
+                      <td className="px-6 py-4 font-mono font-bold text-rose-600">#{item.id}</td>
+                      <td className="px-6 py-4">
+                        <span className="px-2.5 py-1 bg-slate-100 text-slate-800 rounded-full font-bold uppercase text-[10px]">
+                          {item.department}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 max-w-md">
+                        <p className="font-semibold text-slate-900">{item.text}</p>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-rose-700">
+                        {calculateDaysPending(item.submitted_at)} Days Unresolved
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge status="escalated" text="ESCALATED" />
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => {
+                            setActiveComplaint(item);
+                            setResponseText(item.response || '');
+                          }}
+                          icon={FaReply}
+                        >
+                          Executive Reply
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        ) : (
+          <EmptyState
+            title="No Urgent Escalations"
+            description="Great news! All department complaints are within SLA resolution limits."
+          />
+        )}
+      </div>
+
+      <Modal
+        isOpen={Boolean(activeComplaint)}
+        onClose={() => setActiveComplaint(null)}
+        title={`Executive Intervention - Ticket #${activeComplaint?.id}`}
+      >
+        {activeComplaint && (
+          <form onSubmit={handlePrincipalResponseSubmit} className="space-y-4">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-950">
+              <span className="font-bold block mb-1">
+                Department: {activeComplaint.department} (Overdue Ticket)
+              </span>
+              <p>{activeComplaint.text}</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                Principal Response <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={5}
+                required
+                placeholder="Enter executive response to resolve ticket..."
+                value={responseText}
+                onChange={(e) => setResponseText(e.target.value)}
+                className="w-full p-3 bg-white border border-slate-300 rounded-xl text-xs focus:ring-4 focus:ring-rose-200"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setActiveComplaint(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="danger" size="sm" isLoading={isSubmitting} icon={FaCheckCircle}>
+                Submit & Resolve Escalation
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+    </AppShell>
   );
 };
 

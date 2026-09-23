@@ -1,102 +1,99 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaCheckCircle, FaClock, FaExclamationTriangle } from 'react-icons/fa';
+import { FaClock, FaCheckCircle, FaExclamationTriangle, FaShieldAlt, FaArrowRight, FaChartBar } from 'react-icons/fa';
+import AppShell from './components/layout/AppShell';
+import Card, { CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/Card';
+import Button from './components/ui/Button';
 import API from './api';
 
 const PrincipalHomePage = () => {
   const navigate = useNavigate();
-
-  const [counts, setCounts] = useState({
-    resolved: 0,
-    pending: 0,
-    urgent: 0
-  });
+  const [counts, setCounts] = useState({ resolved: 0, pending: 0, urgent: 0 });
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    API.get("/api/principal/home")
-      .then(res => setCounts(res.data))
-      .catch(err => console.error("Error fetching counts:", err));
+    setIsLoading(true);
+    API.get('/api/principal/home')
+      .then((res) => setCounts(res.data))
+      .catch((err) => console.error('Error fetching principal metrics:', err))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const widgets = [
+  const executiveWidgets = [
     {
-      icon: <FaClock size={60} />,
-      name: 'Pending',
+      name: 'Pending Overview',
       count: counts.pending,
-      color: 'bg-yellow-100',
-      route: '/principal/pending'
+      icon: FaClock,
+      route: '/principal/pending',
+      color: 'border-amber-500 text-amber-600 bg-amber-50',
+      desc: 'Active tickets across all university departments'
     },
     {
-      icon: <FaCheckCircle size={60} />,
-      name: 'Resolved',
+      name: 'Resolved Operations',
       count: counts.resolved,
-      color: 'bg-green-100',
-      route: '/principal/resolved'
+      icon: FaCheckCircle,
+      route: '/principal/resolved',
+      color: 'border-emerald-500 text-emerald-600 bg-emerald-50',
+      desc: 'Successfully resolved complaints with admin responses'
     },
     {
-      icon: <FaExclamationTriangle size={60} />,
-      name: 'Urgent',
+      name: 'Urgent & Escalated',
       count: counts.urgent,
-      color: 'bg-red-100',
-      route: '/principal/urgent'
+      icon: FaExclamationTriangle,
+      route: '/principal/urgent',
+      color: 'border-rose-500 text-rose-600 bg-rose-50',
+      desc: 'Unresolved tickets pending for >7 days requiring executive intervention'
     }
   ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden font-sans text-white">
-      {/* Animated Gradient Background */}
-      <div className="absolute inset-0 animate-gradient bg-gradient-to-br from-gray-200 via-blue-300 to-gray-300 bg-size-200 z-0" />
-
-      {/* Decorative blobs */}
-      <div className="absolute top-0 -left-20 w-106 h-106 bg-blue-400 opacity-30 rounded-full mix-blend-multiply filter blur-2xl animate-blob z-0" />
-      <div className="absolute bottom-0 -right-20 w-96 h-96 bg-yellow-300 opacity-20 rounded-full mix-blend-multiply filter blur-2xl animate-blob animation-delay-2000 z-0" />
-
-      {/* Main Content */}
-      <div className="relative z-10 px-4 py-6">
-        {/* Logout */}
-        <button
-          onClick={() => navigate('/')}
-          className="absolute top-4 left-4 text-blue-700 font-medium hover:text-gray-300 transition"
-        >
-          Logout
-        </button>
-
-      {/* Logo and Title */}
-      <header className="flex justify-center items-center p-6 shadow-sm">
-        <img src="/logo1.png" alt="TalkBack Logo" className="h-[150px]" />
-      </header>
-
-      <img
-        src="/logo.png"
-        alt="College Logo"
-        className="absolute top-4 right-4 h-[100px]"
-      />
-
-      <hr className="border-gray-200 my-4" />
-
-      <h2 className="text-center text-5xl font-[Satisfy] text-blue-800 mb-4 font-semibold">
-        Principal Dashboard
-      </h2>
-
-      <hr className="border-gray-200 my-4" />
-
-      {/* Widgets */}
-      <main className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 px-10 py-8">
-        {widgets.map(widget => (
-          <div
-            key={widget.name}
-            onClick={() => navigate(widget.route)}
-            className={`cursor-pointer ${widget.color} p-10 rounded-2xl shadow-lg flex flex-col items-center transition-transform hover:scale-105 hover:shadow-2xl`}
-          >
-            <div className="text-gray-800 mb-4">{widget.icon}</div>
-            <p className="text-xl font-semibold text-gray-700">{widget.name}</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{widget.count}</p>
+    <AppShell>
+      <div className="space-y-8">
+        {/* Executive Banner */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden">
+          <div>
+            <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full text-xs font-semibold uppercase tracking-wider">
+              Executive Management Hub
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-2">
+              Principal Oversight Dashboard
+            </h1>
+            <p className="text-slate-300 text-xs sm:text-sm mt-1 max-w-xl">
+              Cross-department operational oversight, automated 7-day escalation monitoring, and direct executive resolution.
+            </p>
           </div>
-        
-        ))}
-      </main>
+        </div>
+
+        {/* Executive Stat Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {executiveWidgets.map((w) => {
+            const Icon = w.icon;
+            return (
+              <Card
+                key={w.name}
+                onClick={() => navigate(w.route)}
+                className={`p-6 cursor-pointer border-l-4 ${w.color.split(' ')[0]} hover:shadow-xl transition group`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className={`w-12 h-12 rounded-2xl ${w.color.split(' ').slice(1).join(' ')} flex items-center justify-center`}>
+                    <Icon size={24} />
+                  </div>
+                  <span className="text-xs font-bold text-slate-400 group-hover:text-indigo-600 flex items-center gap-1 transition">
+                    Manage <FaArrowRight size={12} />
+                  </span>
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{w.name}</p>
+                  <h3 className="text-3xl font-black text-slate-900 mt-1">{w.count}</h3>
+                  <p className="text-xs text-slate-500 mt-2">{w.desc}</p>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
 };
 
